@@ -20,6 +20,7 @@ from sqlalchemy import (
     JSON,
     CheckConstraint,
     DateTime,
+    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -114,7 +115,21 @@ class Skill(Base):
     # definition is always the active SkillVersion snapshot.
     content: Mapped[str] = mapped_column(Text, nullable=False)
     requested_tools: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    # Backed by the SkillStatus enum at the database level (native ENUM on
+    # PostgreSQL, VARCHAR + CHECK on SQLite); transitions are governed by
+    # the explicit map in app.lifecycle, never set to arbitrary values.
+    # values_callable persists the enum *values* ('draft', ...) rather
+    # than the member names ('DRAFT', ...) and matches the labels created
+    # by migration 0004 on PostgreSQL.
+    status: Mapped[SkillStatus] = mapped_column(
+        Enum(
+            SkillStatus,
+            name="skillstatus",
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+        default=SkillStatus.DRAFT,
+    )
     # Points at the currently activated SkillVersion snapshot.
     active_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)

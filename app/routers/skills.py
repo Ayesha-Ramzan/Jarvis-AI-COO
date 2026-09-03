@@ -24,7 +24,8 @@ from sqlalchemy.orm import selectinload
 from app.audit import record_audit
 from app.database import get_db
 from app.dependencies import get_tenant_context, require_owner
-from app.models import AuditLog, Skill, SkillVersion
+from app.lifecycle import can_transition
+from app.models import AuditLog, Skill, SkillStatus, SkillVersion
 from app.schemas import (
     AuditLogOut,
     DepartmentSkillOut,
@@ -118,7 +119,7 @@ async def create_skill_draft(
         department=payload.department,
         content=payload.content,
         requested_tools=payload.requested_tools,
-        status="draft",
+        status=SkillStatus.DRAFT,
         created_by=context.user_id,
     )
     db.add(skill)
@@ -183,7 +184,7 @@ async def get_active_skills_for_department(
         select(Skill)
         .options(selectinload(Skill.versions))
         .where(
-            Skill.status == "active",
+            Skill.status == SkillStatus.ACTIVE,
             Skill.department == cleaned_department,
         )
         .order_by(Skill.created_at.asc())
@@ -254,7 +255,7 @@ async def update_skill_draft(
 ) -> SkillDetailOut:
     skill = await _get_skill_or_404(db, skill_id)
 
-    if skill.status == "active":
+    if skill.status == SkillStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -262,7 +263,7 @@ async def update_skill_draft(
                 "version and activate it instead."
             ),
         )
-    if skill.status == "disabled":
+    if skill.status == SkillStatus.DISABLED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A disabled skill is immutable and cannot be updated.",
@@ -308,8 +309,8 @@ async def create_skill_version(
 ) -> SkillVersionOut:
     skill = await _get_skill_or_404(db, skill_id)
 
-    if skill.status != "active":
-        if skill.status == "disabled":
+    if skill.status != SkillStatus.ACTIVE:
+        if skill.status == SkillStatus.DISABLED:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A disabled skill cannot accept new versions.",
@@ -386,21 +387,23 @@ async def activate_skill(
     require_owner(context)
     skill = await _get_skill_or_404(db, skill_id)
 
-    if skill.status == "disabled":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A disabled skill cannot be reactivated.",
-        )
-
     # Idempotency: re-activating the currently active version is a no-op.
-    if skill.status == "active" and (
+    if skill.status == SkillStatus.ACTIVE and (
         payload.version_id is None or payload.version_id == skill.active_version_id
     ):
         await db.refresh(skill)
         return _skill_to_detail(skill)
 
+    # Explicit state machine gate (see app.lifecycle): from the terminal
+    # 'disabled' state no transition to active exists.
+    if not can_transition(skill.status, SkillStatus.ACTIVE):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A disabled skill cannot be reactivated.",
+        )
+
     version: SkillVersion
-    if skill.status == "draft":
+    if skill.status == SkillStatus.DRAFT:
         if payload.version_id is not None:
             version = await _get_version_or_404(db, payload.version_id, skill_id=skill.id)
         else:
@@ -443,7 +446,7 @@ async def activate_skill(
         version = await _get_version_or_404(db, payload.version_id, skill_id=skill.id)
 
     previous_status = skill.status
-    skill.status = "active"
+    skill.status = SkillStatus.ACTIVE
     skill.active_version_id = version.id
     await record_audit(
         db,
@@ -480,12 +483,19 @@ async def disable_skill(
     require_owner(context)
     skill = await _get_skill_or_404(db, skill_id)
 
-    if skill.status == "disabled":
+    if skill.status == SkillStatus.DISABLED:
         await db.refresh(skill)
         return _skill_to_detail(skill)
 
+    # Explicit state machine gate (see app.lifecycle).
+    if not can_transition(skill.status, SkillStatus.DISABLED):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot disable a skill in {skill.status.value!r} state.",
+        )
+
     previous_status = skill.status
-    skill.status = "disabled"
+    skill.status = SkillStatus.DISABLED
     await record_audit(
         db,
         tenant=context,
