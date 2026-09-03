@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: jarvis_local_dev_only
+      POSTGRES_DB: jarvis
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis -d jarvis"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  app:
+    build: .
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://jarvis:jarvis_local_dev_only@db:5432/jarvis
+      SEED_FIXTURE_ORGANIZATIONS: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
