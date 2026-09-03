@@ -38,9 +38,9 @@ Architecture decisions:
 - DB credentials required from the environment (no hardcoded defaults);
   compose database is internal-network only.
 
-Tests passed: 41/41 (10 mandatory spec tests + boundary, isolation,
+Tests passed: 42/42 (10 mandatory spec tests + boundary, isolation,
 immutability, idempotency, sanitization, lifecycle-state-machine and config
-tests). Verified by live run 2026-09-04 (41 passed); output captured in README.
+tests). Verified by live run 2026-09-04 (42 passed); output captured in README.
 
 Security/isolation evidence:
 - Live probes: cross-org read/update/activate → 404; member activation →

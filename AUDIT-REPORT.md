@@ -46,7 +46,7 @@ All under `/api/v1/skills` (`app/routers/skills.py`); reachability confirmed liv
 ## 4. Mandatory tests — real suite run
 
 Command run: `.venv/bin/python -m pytest -v`
-Result summary (actual output): `collected 41 items … 41 passed in 9.94s` (full listing captured in README "Test output").
+Result summary (actual output): `collected 42 items … 42 passed in 9.94s` (full listing captured in README "Test output"; final run: 42 passed).
 
 | # | Spec requirement | Test function | Result |
 |---|---|---|---|
@@ -65,16 +65,16 @@ Result summary (actual output): `collected 41 items … 41 passed in 9.94s` (ful
 
 | Item | Present? | Notes |
 |---|---|---|
-| Source code | Yes | `app/` (10 modules + routers), `tests/` (4 files, 41 tests) |
+| Source code | Yes | `app/` (10 modules + routers), `tests/` (4 files, 42 tests) |
 | Schema / migrations | Yes | Alembic 0001-0004, chain verified linear by test; applied live on fresh SQLite and fresh Postgres (including enum type) |
-| Automated tests | Yes | 41 passing, run quoted above |
+| Automated tests | Yes | 42 passing, run quoted above |
 | Docker Compose startup | Yes | Verified live from clean state this session (twice — second after the revision-id fix) |
 | `.env.example` (placeholders only) | Yes | `CHANGE_ME` only; documents that compose requires the password |
 | README with real, working API examples | Yes | Examples re-validated against the live stack; curl payloads match the current API |
 | Architecture decision note (substantive, not filler) | Yes | `docs/ARCHITECTURE_DECISIONS.md`, 7 ADRs incl. updated ADR-3 (replay auditing) |
-| Captured test output file | Yes | README §"Test output" = verbatim fresh `pytest -v` run (41 tests) |
+| Captured test output file | Yes | README §"Test output" = verbatim fresh `pytest -v` run (42 tests) |
 | Known limitations, stated honestly | Yes | README §"Known limitations" (5 items) |
-| Meaningful commit history | Yes | 13 commits: incremental build → audit → per-finding fix commits (F-3, F-1, F-2, F-4, F-6, F-5) → migration-id fix |
+| Meaningful commit history | Yes | incremental commits across build, audit, per-finding fixes (F-3, F-1, F-2, F-4, F-6, F-5) and the migration-id fix — see git log |
 | PROGRESS.md / FINAL-REPORT.md | Yes (F-5 fixed) | Filled with real state; FINAL-REPORT.md follows the template |
 
 ## 6. Restrictions check

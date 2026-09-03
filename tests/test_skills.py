@@ -57,6 +57,31 @@ async def test_same_org_list_only_shows_own_skills(
 
 
 @pytest.mark.asyncio
+async def test_list_status_filter_matches_lifecycle_state(client, abc_owner):
+    """The documented ?status= filter must actually filter — including
+    across a draft -> active transition."""
+    draft = await create_draft(client, abc_owner, name="Filtered Draft")
+    await create_draft(client, abc_owner, name="Filtered Draft Two")
+    await activate(client, abc_owner, draft["id"])
+
+    drafts = await client.get(f"{SKILLS}?status=draft", headers=abc_owner)
+    assert drafts.status_code == 200
+    assert {s["name"] for s in drafts.json()} == {"Filtered Draft Two"}
+    assert all(s["status"] == "draft" for s in drafts.json())
+
+    active = await client.get(f"{SKILLS}?status=active", headers=abc_owner)
+    assert active.status_code == 200
+    assert [s["name"] for s in active.json()] == ["Filtered Draft"]
+
+    disabled = await client.get(f"{SKILLS}?status=disabled", headers=abc_owner)
+    assert disabled.status_code == 200
+    assert disabled.json() == []
+
+    bogus = await client.get(f"{SKILLS}?status=bogus", headers=abc_owner)
+    assert bogus.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_draft_can_be_updated_in_place(client, abc_owner):
     skill = await create_draft(client, abc_owner)
     response = await client.patch(
