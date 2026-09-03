@@ -2,15 +2,17 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: jarvis
-      POSTGRES_PASSWORD: jarvis
-      POSTGRES_DB: jarvis
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-jarvis}
+      # Required - no default, by design. Copy .env.example to .env and set
+      # a real value, or export POSTGRES_PASSWORD before compose up.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set - copy .env.example to .env}
+      POSTGRES_DB: ${POSTGRES_DB:-jarvis}
+    # No host port is published: the database is reachable only on the
+    # internal compose network.
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jarvis -d jarvis"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -20,7 +22,7 @@ services:
     build: .
     environment:
       ENVIRONMENT: development
-      DATABASE_URL: postgresql+asyncpg://jarvis:jarvis@db:5432/jarvis
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jarvis}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set - copy .env.example to .env}@db:5432/${POSTGRES_DB:-jarvis}
       SEED_FIXTURE_ORGANIZATIONS: "true"
     ports:
       - "8000:8000"

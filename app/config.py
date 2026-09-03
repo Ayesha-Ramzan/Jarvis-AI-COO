@@ -29,8 +29,10 @@ class Settings(BaseSettings):
     # When set (e.g. in Docker or CI), this URL wins over the individual parts.
     database_url: str = ""
 
-    postgres_user: str = "jarvis"
-    postgres_password: str = "jarvis"
+    # Credentials have NO defaults: they must come from the environment
+    # (or DATABASE_URL). resolved_database_url raises if they are missing.
+    postgres_user: str = ""
+    postgres_password: str = ""
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "jarvis"
@@ -42,6 +44,12 @@ class Settings(BaseSettings):
     def resolved_database_url(self) -> str:
         if self.database_url:
             return self.database_url
+        if not self.postgres_user or not self.postgres_password:
+            raise RuntimeError(
+                "Database credentials are required: set DATABASE_URL, or set "
+                "both POSTGRES_USER and POSTGRES_PASSWORD in the environment. "
+                "No hardcoded defaults exist by design."
+            )
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"

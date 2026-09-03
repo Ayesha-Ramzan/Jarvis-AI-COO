@@ -29,11 +29,13 @@ for the reasoning and trade-offs.
 ## Quick start (Docker)
 
 ```bash
+cp .env.example .env   # set POSTGRES_PASSWORD (required, no default)
 docker compose up --build
 ```
 
-This starts PostgreSQL, runs `alembic upgrade head`, seeds the two fixture
-organizations (idempotently) and serves the API on http://localhost:8000.
+This starts PostgreSQL (internal network only, no published port), runs
+`alembic upgrade head`, seeds the two fixture organizations and their
+memberships (idempotently) and serves the API on http://localhost:8000.
 Interactive docs: http://localhost:8000/docs
 
 ## Local development (without Docker)
@@ -41,10 +43,14 @@ Interactive docs: http://localhost:8000/docs
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env            # then edit values
+cp .env.example .env            # then edit values (credentials are required)
 alembic upgrade head            # create schema
 uvicorn app.main:app --reload   # seeds fixtures on startup
 ```
+
+For a zero-config local run you can instead point at SQLite, e.g.
+`DATABASE_URL="sqlite+aiosqlite:///./dev.db" alembic upgrade head` and the
+same `DATABASE_URL=... uvicorn app.main:app`.
 
 Run the test suite (dedicated SQLite in-memory database):
 
@@ -180,8 +186,10 @@ tests/test_skills.py::test_audit_trail_is_tenant_scoped PASSED           [100%]
 
 ## Known limitations
 
-- Header-based authentication is a deliberate evaluation shortcut; a real
-  deployment would verify signed tokens and map them to organization + role.
+- Header-based *identity* is a deliberate evaluation shortcut; a real
+  deployment would verify signed tokens. Role authorization, however, is
+  fully server-side via the `memberships` table — the `X-User-Role` header
+  is never trusted.
 - No pagination on list endpoints (fine for the slice's data volume).
 - SQLite is used for the dedicated test database only; production is
   PostgreSQL. Rationale in `docs/ARCHITECTURE_DECISIONS.md`.
