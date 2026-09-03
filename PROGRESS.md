@@ -7,11 +7,11 @@ Last updated: 2026-09-04T00:55+05:00
 - [x] Schema & domain model (organizations, memberships, skills, skill_versions, audit_log — migrations 0001-0004)
 - [x] Auth & tenant scoping (header identity + membership-resolved roles, ContextVar + global query filter)
 - [x] Core lifecycle routes (draft create/update, list, read+versions, immutable versions, owner-only activate/disable, department runtime selection)
-- [x] Tests (10 mandatory + boundary/sanitization/config suite: 39 tests, all green — run 2026-09-04)
+- [x] Tests (10 mandatory + boundary/sanitization/config suite: 41 tests, all green — run 2026-09-04)
 - [x] Docker Compose / .env.example / README (compose verified live from clean state on PostgreSQL 16)
 - [x] Architecture note / limitations / final report (9 ADRs, FINAL-REPORT.md, known limitations in README)
 
-## Mandatory test checklist (from the spec — all actually green, `pytest -q`: 39 passed)
+## Mandatory test checklist (from the spec — all actually green, `pytest -q`: 41 passed)
 - [x] Same-organization create/read succeeds — test_same_org_create_and_read_succeeds
 - [x] Cross-organization read is denied — test_cross_org_read_is_denied
 - [x] Cross-organization update is denied — test_cross_org_update_is_denied
