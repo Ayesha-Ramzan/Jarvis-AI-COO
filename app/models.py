@@ -142,9 +142,17 @@ class SkillVersion(Base):
     __table_args__ = (
         UniqueConstraint("skill_id", "version_number", name="uq_skill_versions_number"),
         Index("ix_skill_versions_skill", "skill_id"),
+        Index("ix_skill_versions_org", "organization_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        # Denormalized from the parent skill so that EVERY tenant-scoped
+        # table carries the canonical ownership key directly, on top of
+        # the join-based isolation filter (defense in depth).
+    )
     skill_id: Mapped[str] = mapped_column(
         ForeignKey("skills.id", ondelete="CASCADE"), nullable=False
     )

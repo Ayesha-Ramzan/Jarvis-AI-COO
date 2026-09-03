@@ -348,6 +348,25 @@ async def test_draft_skill_cannot_accept_new_versions(client, abc_owner):
 
 
 @pytest.mark.asyncio
+async def test_version_rows_carry_organization_id(client, abc_owner):
+    """F-1: every tenant-scoped row carries the ownership key directly."""
+    skill = await create_draft(client, abc_owner)
+    await activate(client, abc_owner, skill["id"])
+
+    v2 = await client.post(
+        f"{SKILLS}/{skill['id']}/versions",
+        json=sample_skill_payload(name="Invoice Chaser v2"),
+        headers=abc_owner,
+    )
+    assert v2.status_code == 201
+
+    fetched = await client.get(f"{SKILLS}/{skill['id']}", headers=abc_owner)
+    versions = fetched.json()["versions"]
+    assert {v["version_number"] for v in versions} == {1, 2}
+    assert all(v["organization_id"] == ABC_ORG_ID for v in versions)
+
+
+@pytest.mark.asyncio
 async def test_activation_of_foreign_version_is_denied(client, abc_owner):
     first = await create_draft(client, abc_owner, name="Skill One")
     second = await create_draft(client, abc_owner, name="Skill Two")

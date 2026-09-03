@@ -338,6 +338,7 @@ async def create_skill_version(
         }
     )
     version = SkillVersion(
+        organization_id=skill.organization_id,
         skill_id=skill.id,
         version_number=version_number,
         name=payload.name,
@@ -416,6 +417,7 @@ async def activate_skill(
                 }
             )
             version = SkillVersion(
+                organization_id=skill.organization_id,
                 skill_id=skill.id,
                 version_number=1,
                 name=skill.name,
