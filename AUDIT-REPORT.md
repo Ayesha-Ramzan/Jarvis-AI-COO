@@ -46,7 +46,7 @@ All under `/api/v1/skills` (`app/routers/skills.py`); reachability confirmed liv
 ## 4. Mandatory tests — real suite run
 
 Command run: `.venv/bin/python -m pytest -v`
-Result summary (actual output): `collected 42 items … 42 passed in 9.94s` (full listing captured in README "Test output"; final run: 42 passed).
+Result summary (actual output): `collected 42 items … 42 passed in 11.85s` (full listing captured in README "Test output").
 
 | # | Spec requirement | Test function | Result |
 |---|---|---|---|

@@ -4,7 +4,7 @@ Repository URL: (local repository — push target to be assigned by the candidat
 Start time: 2026-09-03
 Finish time: 2026-09-04
 Approximate hours: ~8 total across two sessions (build, then evidence-based audit + six finding fixes)
-Final commit SHA: code-complete at `6ef1d3c`; docs/artifact commit follows (see `git log -1 --oneline`)
+Final commit SHA: `863e3b6` at submission; docs refreshed in the final commit (see `git log -1 --oneline`)
 
 Goal achieved: Yes. The full workflow — authenticated organization → draft
 create → review → owner activation → active retrieval → exact-version audit

@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 OWNER_ROLE = "owner"
 MEMBER_ROLE = "member"
-VALID_ROLES = frozenset({OWNER_ROLE, MEMBER_ROLE})
 
 
 @dataclass(frozen=True, slots=True)
