@@ -126,11 +126,63 @@ async def test_unknown_organization_is_rejected(client):
     assert response.status_code in (401, 403)
 
 
+# ---------------------------------------------------------------------------
+# Server-side role resolution from memberships (F-3)
+#
+# The old test_invalid_role_header_is_rejected asserted that a bogus
+# X-User-Role header value returns 403. That expectation was wrong: it
+# treated the header as the role's source of truth. The header is now
+# advisory-only and ignored, so the test was replaced by the ones below,
+# which prove the role actually comes from the memberships table.
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_invalid_role_header_is_rejected(client, abc_owner):
+async def test_member_claiming_owner_in_header_is_still_denied(
+    client, abc_owner, abc_member
+):
+    """A member sending X-User-Role: owner must NOT gain owner powers."""
+    skill = await create_draft(client, abc_owner)
+    forged = dict(abc_member)
+    forged["X-User-Role"] = "owner"
+    response = await activate(client, forged, skill["id"])
+    assert response.status_code == 403
+    fetched = await client.get(f"{SKILLS}/{skill['id']}", headers=abc_owner)
+    assert fetched.json()["status"] == "draft"
+
+
+@pytest.mark.asyncio
+async def test_owner_with_member_header_role_still_activates(
+    client, abc_owner
+):
+    """An owner sending X-User-Role: member keeps owner powers: the
+    membership record wins over the header."""
+    skill = await create_draft(client, abc_owner)
+    downgraded = dict(abc_owner)
+    downgraded["X-User-Role"] = "member"
+    response = await activate(client, downgraded, skill["id"])
+    assert response.status_code == 200
+    assert response.json()["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_bogus_role_header_is_ignored(client, abc_owner):
+    """The advisory header is never consulted: even a nonsense value does
+    not block (or elevate) a real member."""
     bad = dict(abc_owner)
     bad["X-User-Role"] = "superadmin"
     response = await client.get(SKILLS, headers=bad)
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_non_member_user_is_rejected(client, abc_owner):
+    """A user with no membership row at all is rejected outright."""
+    outsider = headers(ABC_ORG_ID, "eve", "owner")
+    response = await client.get(SKILLS, headers=outsider)
+    assert response.status_code == 403
+    skill = await create_draft(client, abc_owner)
+    response = await activate(client, outsider, skill["id"])
     assert response.status_code == 403
 
 

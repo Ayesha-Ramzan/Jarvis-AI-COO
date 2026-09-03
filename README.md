@@ -60,10 +60,15 @@ requests require:
 | Header            | Example                                | Meaning                        |
 |-------------------|----------------------------------------|--------------------------------|
 | `X-Organization-Id` | `018f...` (see seeded IDs below)     | tenant identity; must exist    |
-| `X-User-Id`       | `alice`                                | actor identity (audit log)     |
-| `X-User-Role`     | `owner` or `member`                    | only `owner` activates/disables |
+| `X-User-Id`       | `alice`                                | actor identity; must be a member |
+| `X-User-Role`     | (optional, ignored)                    | **never trusted** — the role is resolved server-side from the `memberships` table |
 
-Unknown organizations and unknown roles are rejected with 403 (deliberately
+Roles are stored in a real `memberships` table (`organization_id`, `user_id`,
+`role`) and resolved on **every** request in `get_tenant_context`. The header
+identifies *who* is calling; it can never say *what they may do*: a member
+sending `X-User-Role: owner` is still a member, and an owner sending
+`X-User-Role: member` keeps owner powers. Unknown organizations, non-member
+users and cross-tenant access are all rejected with 403/404 (deliberately
 not distinguishable — no existence oracle is exposed).
 
 Seeded fixture organizations (deterministic UUIDs, stable across restarts):
@@ -72,6 +77,13 @@ Seeded fixture organizations (deterministic UUIDs, stable across restarts):
 |------------------|----------------------------------------|
 | ABC Construction | `3de6e8a0-3623-5f2e-a708-9e338dcde4b2` |
 | XYZ Builders     | `61fbdbb9-be48-51f7-a4fe-20e17b464faf` |
+
+Seeded fixture memberships (one owner + one member per organization):
+
+| Organization     | Owner  | Member |
+|------------------|--------|--------|
+| ABC Construction | alice  | bob    |
+| XYZ Builders     | carol  | dave   |
 
 ## API overview (`/api/v1/skills`)
 

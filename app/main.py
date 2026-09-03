@@ -2,8 +2,9 @@
 
 Swagger/OpenAPI is customised with tagged groups so reviewers can navigate
 the vertical slice quickly. Fixture organizations (ABC Construction, XYZ
-Builders) are seeded idempotently on startup - controlled by
-``SEED_FIXTURE_ORGANIZATIONS`` and disabled automatically under ``test``.
+Builders) and their memberships (one owner + one member each) are seeded
+idempotently on startup - controlled by ``SEED_FIXTURE_ORGANIZATIONS`` and
+disabled automatically under ``test``.
 """
 
 from __future__ import annotations
@@ -16,15 +17,28 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
-from app.models import Organization
+from app.models import Membership, Organization
 from app.routers import skills
 
 settings = get_settings()
 
+ABC_ORG_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "jarvis-org:ABC Construction"))
+XYZ_ORG_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "jarvis-org:XYZ Builders"))
+
 FIXTURE_ORGANIZATIONS: tuple[tuple[str, str], ...] = (
     # Deterministic, name-derived UUIDs so seeding is idempotent.
-    (str(uuid.uuid5(uuid.NAMESPACE_DNS, "jarvis-org:ABC Construction")), "ABC Construction"),
-    (str(uuid.uuid5(uuid.NAMESPACE_DNS, "jarvis-org:XYZ Builders")), "XYZ Builders"),
+    (ABC_ORG_ID, "ABC Construction"),
+    (XYZ_ORG_ID, "XYZ Builders"),
+)
+
+# Memberships back the server-side role check: one owner and one member per
+# fixture organization. Roles are resolved from these rows on every request,
+# never from the X-User-Role header.
+FIXTURE_MEMBERSHIPS: tuple[tuple[str, str, str], ...] = (
+    (ABC_ORG_ID, "alice", "owner"),
+    (ABC_ORG_ID, "bob", "member"),
+    (XYZ_ORG_ID, "carol", "owner"),
+    (XYZ_ORG_ID, "dave", "member"),
 )
 
 
@@ -35,6 +49,16 @@ async def seed_fixture_organizations() -> None:
         for org_id, name in FIXTURE_ORGANIZATIONS:
             if org_id not in existing:
                 session.add(Organization(id=org_id, name=name))
+
+        result = await session.execute(
+            select(Membership.organization_id, Membership.user_id)
+        )
+        existing_members = set(result.all())
+        for org_id, user_id, role in FIXTURE_MEMBERSHIPS:
+            if (org_id, user_id) not in existing_members:
+                session.add(
+                    Membership(organization_id=org_id, user_id=user_id, role=role)
+                )
         await session.commit()
 
 
@@ -54,8 +78,10 @@ app = FastAPI(
         "an immutable draft -> active -> disabled lifecycle, versioned "
         "skill definitions and full auditability.\n\n"
         "Authentication is header-based for this evaluation: every request "
-        "must send `X-Organization-Id`, `X-User-Id` and `X-User-Role` "
-        "(`owner` or `member`)."
+        "must send `X-Organization-Id` and `X-User-Id`. The actor's role "
+        "(owner/member) is resolved server-side from the organization's "
+        "membership records - the optional `X-User-Role` header is never "
+        "trusted for authorization."
     ),
     lifespan=lifespan,
     openapi_tags=[

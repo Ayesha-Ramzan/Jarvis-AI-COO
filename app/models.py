@@ -58,6 +58,37 @@ class Organization(Base):
     skills: Mapped[list["Skill"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
+    memberships: Mapped[list["Membership"]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
+
+
+class Membership(Base):
+    """Organization membership with a role: the server-side source of truth
+    for who holds which role in which organization.
+
+    Composite primary key on (organization_id, user_id) makes membership a
+    single, enforceable fact: the request headers may *identify* the caller,
+    but the role used for every authorization decision is read from this row,
+    never from a self-declared header.
+    """
+
+    __tablename__ = "memberships"
+    __table_args__ = (
+        CheckConstraint("role IN ('owner', 'member')", name="ck_memberships_role"),
+        Index("ix_memberships_user", "user_id"),
+    )
+
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    organization: Mapped[Organization] = relationship(back_populates="memberships")
 
 
 class Skill(Base):

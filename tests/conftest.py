@@ -31,10 +31,20 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Organization
+from app.models import Membership, Organization
 
 ABC_ORG_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "jarvis-org:ABC Construction"))
 XYZ_ORG_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "jarvis-org:XYZ Builders"))
+
+# Roles here mirror the fixture memberships seeded by the application so
+# tests exercise the same server-side role resolution as production.
+def fixture_memberships() -> list[Membership]:
+    return [
+        Membership(organization_id=ABC_ORG_ID, user_id="alice", role="owner"),
+        Membership(organization_id=ABC_ORG_ID, user_id="bob", role="member"),
+        Membership(organization_id=XYZ_ORG_ID, user_id="carol", role="owner"),
+        Membership(organization_id=XYZ_ORG_ID, user_id="dave", role="member"),
+    ]
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
 
@@ -63,6 +73,7 @@ async def db_session():
             [
                 Organization(id=ABC_ORG_ID, name="ABC Construction"),
                 Organization(id=XYZ_ORG_ID, name="XYZ Builders"),
+                *fixture_memberships(),
             ]
         )
         await session.commit()
@@ -98,6 +109,11 @@ def abc_member() -> dict[str, str]:
 @pytest_asyncio.fixture
 def xyz_owner() -> dict[str, str]:
     return headers(XYZ_ORG_ID, "carol", "owner")
+
+
+@pytest_asyncio.fixture
+def xyz_member() -> dict[str, str]:
+    return headers(XYZ_ORG_ID, "dave", "member")
 
 
 def sample_skill_payload(**overrides) -> dict:

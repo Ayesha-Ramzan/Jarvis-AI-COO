@@ -1,13 +1,17 @@
 """Authentication / tenant-context dependencies.
 
-Requests are authenticated purely through headers (this is a back-end
+Requests are authenticated through headers (this is a back-end
 evaluation slice; no JWT issuer is in scope):
 
   * ``X-Organization-Id`` must reference a real organization, otherwise the
     request is rejected with 403 (we intentionally do not distinguish
     "unknown org" from "forbidden" - no existence oracle is exposed).
-  * ``X-User-Id`` is the actor identity recorded in audit logs.
-  * ``X-User-Role`` must be ``owner`` or ``member``.
+  * ``X-User-Id`` is the actor identity, which must be a *member* of the
+    organization according to the ``memberships`` table.
+  * ``X-User-Role`` is accepted for backwards compatibility but is **never
+    trusted**: the role used for every authorization decision is read
+    server-side from the caller's ``memberships`` row. A member sending
+    ``X-User-Role: owner`` is still a member.
 
 A successful resolution stores the tenant in a ``ContextVar`` (see
 ``app.tenant``) which the global SQLAlchemy filter in ``app.database`` uses
@@ -23,29 +27,23 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Organization
-from app.tenant import VALID_ROLES, TenantContext, tenant_context_var
+from app.models import Membership, Organization
+from app.tenant import TenantContext, tenant_context_var
 
 
 async def get_tenant_context(
     db: Annotated[AsyncSession, Depends(get_db)],
     x_organization_id: Annotated[str, Header(alias="X-Organization-Id")],
     x_user_id: Annotated[str, Header(alias="X-User-Id")],
-    x_user_role: Annotated[str, Header(alias="X-User-Role")],
+    x_user_role: Annotated[str | None, Header(alias="X-User-Role")] = None,
 ) -> AsyncGenerator[TenantContext, None]:
     organization_id = x_organization_id.strip()
     user_id = x_user_id.strip()
-    role = x_user_role.strip().lower()
 
     if not organization_id or not user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="X-Organization-Id and X-User-Id headers must be non-empty",
-        )
-    if role not in VALID_ROLES:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"X-User-Role must be one of {sorted(VALID_ROLES)}",
         )
 
     organization = await db.get(Organization, organization_id)
@@ -55,8 +53,17 @@ async def get_tenant_context(
             detail="Unknown organization or insufficient privileges",
         )
 
+    # The role comes from the membership record, not from the request:
+    # headers identify *who* is calling, never *what they may do*.
+    membership = await db.get(Membership, (organization_id, user_id))
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unknown organization or insufficient privileges",
+        )
+
     context = TenantContext(
-        organization_id=organization_id, user_id=user_id, role=role
+        organization_id=organization_id, user_id=user_id, role=membership.role
     )
     token = tenant_context_var.set(context)
     try:
@@ -66,7 +73,12 @@ async def get_tenant_context(
 
 
 def require_owner(context: TenantContext) -> None:
-    """Raise 403 unless the current actor owns the organization."""
+    """Raise 403 unless the current actor owns the organization.
+
+    The role was resolved from the memberships table in
+    ``get_tenant_context``, so this check is backed by a server-side
+    record, not by anything the caller asserted.
+    """
     if not context.is_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
