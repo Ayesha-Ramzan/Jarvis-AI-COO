@@ -9,7 +9,7 @@ Enforces at the database level:
     per user per organization;
   * role restricted to the owner/member vocabulary.
 
-Revision ID: 0002_organization_memberships
+Revision ID: 0002_memberships
 Revises: 0001_initial_schema
 Create Date: 2026-09-04
 
@@ -20,7 +20,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0002_organization_memberships"
+revision: str = "0002_memberships"
 down_revision: Union[str, None] = "0001_initial_schema"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

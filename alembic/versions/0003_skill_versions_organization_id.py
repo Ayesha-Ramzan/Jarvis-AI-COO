@@ -5,7 +5,7 @@ directly. The column is populated from the parent skill (defense in depth
 on top of the join-based isolation filter) and backfilled for existing
 rows before NOT NULL is enforced.
 
-Revision ID: 0003_skill_versions_organization_id
+Revision ID: 0003_versions_org_id
 Revises: 0002_organization_memberships
 Create Date: 2026-09-04
 
@@ -16,8 +16,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0003_skill_versions_organization_id"
-down_revision: Union[str, None] = "0002_organization_memberships"
+revision: str = "0003_versions_org_id"
+down_revision: Union[str, None] = "0002_memberships"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

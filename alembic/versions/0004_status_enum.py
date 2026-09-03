@@ -17,7 +17,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0004_status_enum"
-down_revision: Union[str, None] = "0003_skill_versions_organization_id"
+down_revision: Union[str, None] = "0003_versions_org_id"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
