@@ -36,16 +36,22 @@ activation events a tamper-evident anchor.
 **Consequences.** Draft edits never rewrite history; reviewers can diff
 versions; audit rows can point at an exact version + hash.
 
-## ADR-3 — Idempotency by state comparison, not request dedup
+## ADR-3 — Idempotency by state comparison, with replays audited
 
 **Decision.** Re-activating the already-active version (and re-disabling a
-disabled skill) returns 200 with current state and writes **no** audit row.
+disabled skill) returns 200 with current state and changes nothing.
 State transitions are compared before acting, instead of relying on
-idempotency keys.
+idempotency keys. Unlike the original design, each replay **does** write a
+distinct audit event (`skill.activation_replayed` / `skill.disable_replayed`)
+carrying the would-be version id and hash.
 
 **Why.** Retry-safety (network retries, double clicks) without key
-management. Audit logs record real transitions only, so a replayed request
-cannot inflate the trail.
+management. The audit change came from re-reading the evaluation spec:
+idempotent operations must be "safe and should still be traceable in the
+audit trail" — a replay that leaves no trace is invisible to reviewers, so
+the earlier "log real transitions only" policy was dropped. Real
+transitions and replays remain distinguishable because they carry different
+event types, so replays cannot inflate the transition count.
 
 ## ADR-4 — Closed tool catalogue; requesting never grants
 

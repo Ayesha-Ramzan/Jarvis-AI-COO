@@ -277,8 +277,9 @@ async def test_disable_is_idempotent(client, abc_owner):
     assert second.json()["status"] == "disabled"
 
     audit = await client.get(f"{SKILLS}/{skill['id']}/audit", headers=abc_owner)
-    disable_events = [e for e in audit.json() if e["event"] == "skill.disabled"]
-    assert len(disable_events) == 1
+    events = [e["event"] for e in audit.json()]
+    assert events.count("skill.disabled") == 1
+    assert events.count("skill.disable_replayed") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -395,11 +396,20 @@ async def test_duplicate_activation_is_idempotent_and_safe(client, abc_owner):
     assert second.json()["status"] == "active"
     assert second.json()["active_version_id"] == first.json()["active_version_id"]
 
-    # Exactly one activation transition was recorded - the replay was a no-op.
+    # Exactly one real activation transition was recorded, and the replay
+    # is traceable as its own distinct audit event (F-4): idempotent, but
+    # never invisible.
     audit = await client.get(f"{SKILLS}/{skill['id']}/audit", headers=abc_owner)
     events = [e["event"] for e in audit.json()]
     assert events.count("skill.activated") == 1
     assert events.count("skill.version_created") == 1
+    assert events.count("skill.activation_replayed") == 1
+    replayed = next(
+        e for e in audit.json() if e["event"] == "skill.activation_replayed"
+    )
+    assert replayed["version_id"] == first.json()["active_version_id"]
+    assert replayed["version_hash"]
+    assert replayed["actor_id"] == "alice"
 
 
 # ---------------------------------------------------------------------------

@@ -1,9 +1,10 @@
 """Audit logging helper.
 
-Every create, update, state mutation, version creation and activation event
-is recorded with the organization, actor, event, timestamp and version hash.
-Idempotent no-op replays (e.g. re-activating the already-active version) do
-NOT write audit rows - the log reflects real state transitions only.
+Every create, update, state mutation, version creation and activation
+event is recorded with the organization, actor, event, timestamp and
+version hash. Idempotent no-op replays (e.g. re-activating the
+already-active version) change no state, but they still write a distinct
+`*_replayed` audit event so the request remains traceable.
 """
 
 from __future__ import annotations

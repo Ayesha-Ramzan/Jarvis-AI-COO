@@ -375,7 +375,8 @@ async def create_skill_version(
         "`draft`, the draft's working copy is snapshotted as immutable "
         "version 1; from `active`, an explicit `version_id` switches the "
         "runtime definition. Re-sending an activation for the already-active "
-        "version is a safe, idempotent no-op (200, no duplicate audit row)."
+        "version is a safe, idempotent no-op (200, state unchanged) that is "
+        "recorded in the audit trail as `skill.activation_replayed`."
     ),
 )
 async def activate_skill(
@@ -387,10 +388,28 @@ async def activate_skill(
     require_owner(context)
     skill = await _get_skill_or_404(db, skill_id)
 
-    # Idempotency: re-activating the currently active version is a no-op.
+    # Idempotency: re-activating the currently active version is a no-op
+    # for state, but the replay is still recorded in the audit trail so
+    # the request remains traceable (spec: idempotent operations must be
+    # safe AND auditable).
     if skill.status == SkillStatus.ACTIVE and (
         payload.version_id is None or payload.version_id == skill.active_version_id
     ):
+        active_version = (
+            await db.get(SkillVersion, skill.active_version_id)
+            if skill.active_version_id
+            else None
+        )
+        await record_audit(
+            db,
+            tenant=context,
+            event="skill.activation_replayed",
+            skill_id=skill.id,
+            version_id=skill.active_version_id,
+            version_hash=active_version.version_hash if active_version else None,
+            detail={"note": "idempotent replay; no state change"},
+        )
+        await db.commit()
         await db.refresh(skill)
         return _skill_to_detail(skill)
 
@@ -472,7 +491,8 @@ async def activate_skill(
     description=(
         "Moves an `active` (or `draft`) skill to the terminal `disabled` "
         "state, excluding it from all runtime selection. Re-disabling an "
-        "already disabled skill is a safe, idempotent no-op."
+        "already disabled skill is a safe, idempotent no-op (200, state "
+        "unchanged) recorded as `skill.disable_replayed` in the audit trail."
     ),
 )
 async def disable_skill(
@@ -484,6 +504,21 @@ async def disable_skill(
     skill = await _get_skill_or_404(db, skill_id)
 
     if skill.status == SkillStatus.DISABLED:
+        active_version = (
+            await db.get(SkillVersion, skill.active_version_id)
+            if skill.active_version_id
+            else None
+        )
+        await record_audit(
+            db,
+            tenant=context,
+            event="skill.disable_replayed",
+            skill_id=skill.id,
+            version_id=skill.active_version_id,
+            version_hash=active_version.version_hash if active_version else None,
+            detail={"note": "idempotent replay; no state change"},
+        )
+        await db.commit()
         await db.refresh(skill)
         return _skill_to_detail(skill)
 
