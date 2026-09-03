@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: jarvis
-      POSTGRES_PASSWORD: jarvis_local_dev_only
+      POSTGRES_PASSWORD: jarvis
       POSTGRES_DB: jarvis
     ports:
       - "5432:5432"
@@ -20,7 +20,7 @@ services:
     build: .
     environment:
       ENVIRONMENT: development
-      DATABASE_URL: postgresql+asyncpg://jarvis:jarvis_local_dev_only@db:5432/jarvis
+      DATABASE_URL: postgresql+asyncpg://jarvis:jarvis@db:5432/jarvis
       SEED_FIXTURE_ORGANIZATIONS: "true"
     ports:
       - "8000:8000"
