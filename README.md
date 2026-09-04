@@ -1,14 +1,56 @@
-# JARVIS AI COO — Organization-Scoped Skill Registry (Vertical Slice)
+# JARVIS AI COO — Organization-Scoped Skill Registry
 
-A privacy-first, multi-tenant FastAPI backend where organizations create,
+![Python](https://img.shields.io/badge/Python-3.12%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-green)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
+![Tests](https://img.shields.io/badge/tests-49%20passing-brightgreen)
+![License](https://img.shields.io/badge/status-evaluation%20slice-orange)
+
+A privacy-first, multi-tenant **FastAPI** backend where organizations create,
 review, version, activate and disable custom AI COO skills with strict
 organization-level isolation. Organization A can never read, modify or
-activate Organization B's data.
+activate Organization B's data — enforced at the database-session layer, not
+by per-route checks.
 
-- **Framework:** FastAPI (Python 3.12+)
-- **Database:** PostgreSQL 16 via SQLAlchemy 2.0 async sessions + Alembic migrations
-- **Tests:** pytest + pytest-asyncio + pytest-env (SQLite in-memory test DB)
-- **Run:** production-grade multi-stage Dockerfile + docker-compose (app + managed PostgreSQL)
+| | |
+|---|---|
+| **Framework** | FastAPI (Python 3.12+), fully async |
+| **Database** | PostgreSQL 16 · SQLAlchemy 2.0 async · Alembic migrations |
+| **Tests** | 49 passing (pytest + pytest-asyncio), incl. a 10-test mandatory acceptance matrix |
+| **Deployment** | Multi-stage Dockerfile + Docker Compose (app + PostgreSQL, zero manual provisioning) |
+
+## Why this design is safe by construction
+
+- 🧱 **Global tenant filter** — a SQLAlchemy `do_orm_execute` event appends
+  `organization_id = <tenant>` to *every* ORM query. No router can forget a
+  tenant filter; cross-tenant rows are invisible, so cross-tenant access is
+  indistinguishable from a missing row (404 — no existence oracle).
+- 🔒 **Immutable active versions** — an active skill is never mutated in
+  place. Behavior changes require a new immutable `SkillVersion` snapshot,
+  activated explicitly by an owner.
+- 🚦 **Real state machine** — `draft → active → disabled` is an enum-backed
+  column gated by an explicit transition map, not free text.
+- 👑 **Server-side roles** — `owner`/`member` live in a `memberships` table
+  and are resolved on every request; a self-declared role header is ignored.
+- 🔐 **Opt-in tool permissions** — tools are validated against a closed
+  catalogue; *requesting* a tool grants nothing. Granting is a separate,
+  owner-only, per-version approval act.
+- 📜 **Complete audit trail** — every state change (and every idempotent
+  replay) is logged with organization, actor, event, timestamp and the exact
+  version hash.
+
+## Table of contents
+
+1. [Quick start (Docker)](#quick-start-docker)
+2. [Local development](#local-development-without-docker)
+3. [Authentication model](#authentication-model-evaluation-slice)
+4. [API overview](#api-overview-apiv1skills)
+5. [Example session](#example-session-curl)
+6. [Test output](#test-output)
+7. [Architecture decisions](#architecture-in-one-paragraph)
+8. [Known limitations](#known-limitations)
+9. [Project reports](#final-report)
+
 
 ## Architecture in one paragraph
 
@@ -204,6 +246,24 @@ tests/test_skills.py::test_full_workflow_create_review_activate_retrieve_audit P
 tests/test_skills.py::test_audit_trail_is_tenant_scoped PASSED           [100%]
 
 ============================= 49 passed in 11.9s ==============================
+```
+
+## Project structure
+
+```
+app/
+├── main.py            # FastAPI app, startup seeding, health probe
+├── database.py        # async engine/session + global tenant-isolation filter
+├── tenant.py          # TenantContext resolution (org + server-side role)
+├── dependencies.py    # shared auth/isolation dependencies (require_owner, ...)
+├── lifecycle.py       # draft → active → disabled state-machine map
+├── models.py          # organizations, memberships, skills, versions, approvals, audit
+├── schemas.py         # Pydantic validation, sanitizers, closed tool catalogue
+├── audit.py           # audit-log writer
+└── routers/skills.py  # all /api/v1/skills endpoints
+alembic/versions/      # 5 linear migrations
+tests/                 # 49 tests: isolation, lifecycle, immutability, tool approvals
+docs/ARCHITECTURE_DECISIONS.md
 ```
 
 ## Known limitations
