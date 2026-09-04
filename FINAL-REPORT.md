@@ -4,7 +4,11 @@ Repository URL: https://github.com/Ayesha-Ramzan/Jarvis-AI-COO
 Start time: 2026-09-03, 11:00 PM (first commit 22:32)
 Finish time: 2026-09-04, 5:00 AM
 Approximate hours: ~6 (single continuous session: build → audit → fixes → push)
-Final commit SHA: `34467f3ea8f4a9787f202c682b05f49d43c9abe6`
+Final code commit SHA: `8ec77b28222760180c568758c1288283b65d9b7a`
+(this SHA names the final commit of all code, tests, fixes and submission
+artifacts; the report commit that records this line is itself the
+repository's last commit — a commit cannot contain its own hash. Verify:
+`git cat-file -t 8ec77b28222760180c568758c1288283b65d9b7a` → commit)
 
 Goal achieved: Yes. The full workflow — authenticated organization → draft
 create → review → owner activation → active retrieval → exact-version audit
@@ -14,7 +18,7 @@ construction.
 
 Architecture decisions:
 - PostgreSQL 16 + SQLAlchemy 2.0 async sessions + Alembic migrations
-  (0001-0004); SQLite in-memory only for the dedicated test database (ADR-5).
+  (0001-0005); SQLite in-memory only for the dedicated test database (ADR-5).
 - Global tenant isolation: request-scoped `TenantContext` in a ContextVar,
   enforced by a SQLAlchemy `do_orm_execute` listener applying
   `with_loader_criteria(organization_id == tenant)` to every ORM SELECT on
@@ -38,12 +42,22 @@ Architecture decisions:
 - DB credentials required from the environment (no hardcoded defaults);
   compose database is internal-network only.
 
-Tests passed: 49/49 (10 mandatory spec tests + boundary, isolation,
-immutability, idempotency, tool-approval, sanitization, lifecycle-state-machine
-and config tests). Verified by live run 2026-09-04 on SQLite (dedicated test
-database) **and** against PostgreSQL via the Docker Compose stack and its
-`test` service — PostgreSQL is the reported source of truth (commit
-`7142419`, "run full test suite against PostgreSQL"). Output captured in README.
+Tests passed: 52/52 (10 mandatory spec tests + boundary, isolation,
+immutability, version switching, idempotency, tool-approval, sanitization,
+lifecycle-state-machine and config tests). Verified by live runs 2026-09-04
+on SQLite (dedicated test database) **and** against PostgreSQL via the Docker
+Compose stack and its `test` service — PostgreSQL is the reported source of
+truth (commit `7142419`). The suite is hermetic: `pytest -v` passes 52/52
+both with an ambient `.env` present (as the README quick start creates) and
+without one. Output captured in README.
+
+Late fixes (found by live-API review, fixed and verified 2026-09-04):
+- Version switching on an already-active skill returned 409; the state-
+  machine gate now governs only genuine status transitions, and switching
+  the active version takes its own explicit, audited path (live curl: 200,
+  `active_version_id` updated, prior version row untouched).
+- `Settings` ignored no ambient `.env` under tests; now env_file is
+  disabled when ENVIRONMENT=test, making the suite hermetic.
 
 Security/isolation evidence:
 - Live probes: cross-org read/update/activate → 404; member activation →
