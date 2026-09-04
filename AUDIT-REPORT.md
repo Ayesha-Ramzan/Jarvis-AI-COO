@@ -8,7 +8,7 @@ no PASS.
 
 Audited on: 2026-09-04 (fifth, process-finality pass)
 Repo: https://github.com/Ayesha-Ramzan/Jarvis-AI-COO
-Commit audited: `165af3cbe930542d160d959e45dd6bc3c4897f83` (HEAD at start of
+Commit audited: `04b66d70b9666a88280f861e05657acbb42bf17c` (HEAD at start of
 this pass; documentation-only — the audit report itself). Final code commit:
 `cc99041c2675e73040726a03b742d429e5b4cf01`, verified green in CI:
 https://github.com/Ayesha-Ramzan/Jarvis-AI-COO/actions/runs/33852745432
@@ -48,7 +48,7 @@ signing key is different each run.
   The report names `cc99041` as the final verified-green code commit and `165af3c`
   as the latest HEAD (a docs-only audit pass). Every commit after `cc99041`
   (`0ee8549`, `165af3c`) is documentation-only, so the "final code commit" claim
-  is checkable and true. `git rev-parse HEAD`: `165af3cbe930542d160d959e45dd6bc3c4897f83`.
+  is checkable and true. `git rev-parse HEAD`: `04b66d70b9666a88280f861e05657acbb42bf17c`.
   The bearer-token 503/200 and cross-tenant 404/403/422 proofs were re-issued
   live this pass against a running server (SQLite, AUTH_SIGNING_KEY set from
   the environment).
@@ -91,7 +91,7 @@ signing key is different each run.
 Command run (this session, both backends):
 `.venv/bin/python -m pytest -q` → `66 passed, 1 skipped, 1 warning in 13.67s` (SQLite, locally — fresh run this pass)
 `TEST_DATABASE_URL=postgresql+asyncpg://...@localhost:15432/jarvis_test .venv/bin/python -m pytest -q` → `67 passed, 1 warning in 123.14s` (PostgreSQL 16 container)
-CI is green on both the final code commit and the current HEAD: run 33852745432 (`cc99041`, both jobs success) and run 33853265794 (`165af3c`, both jobs success — `postgresql` → success, `sqlite` → success, read via the GitHub Actions API).
+CI is green on the final code commit, the previous HEAD, AND the current HEAD: run 33852745432 (`cc99041`), 33853265794 (`165af3c`), 33856143459 (`04b66d7` — current) — every one shows both `sqlite` → success and `postgresql` → success (read via the GitHub Actions API).
 
 | # | Spec requirement | Test function | Result |
 |---|---|---|---|
