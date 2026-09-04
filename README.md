@@ -21,21 +21,21 @@ by per-route checks.
 
 ## Why this design is safe by construction
 
-- 🧱 **Global tenant filter** — a SQLAlchemy `do_orm_execute` event appends
+- **Global tenant filter** — a SQLAlchemy `do_orm_execute` event appends
   `organization_id = <tenant>` to *every* ORM query. No router can forget a
   tenant filter; cross-tenant rows are invisible, so cross-tenant access is
   indistinguishable from a missing row (404 — no existence oracle).
-- 🔒 **Immutable active versions** — an active skill is never mutated in
+- **Immutable active versions** — an active skill is never mutated in
   place. Behavior changes require a new immutable `SkillVersion` snapshot,
   activated explicitly by an owner.
-- 🚦 **Real state machine** — `draft → active → disabled` is an enum-backed
+-  **Real state machine** — `draft → active → disabled` is an enum-backed
   column gated by an explicit transition map, not free text.
-- 👑 **Server-side roles** — `owner`/`member` live in a `memberships` table
+- **Server-side roles** — `owner`/`member` live in a `memberships` table
   and are resolved on every request; a self-declared role header is ignored.
-- 🔐 **Opt-in tool permissions** — tools are validated against a closed
+- **Opt-in tool permissions** — tools are validated against a closed
   catalogue; *requesting* a tool grants nothing. Granting is a separate,
   owner-only, per-version approval act.
-- 📜 **Complete audit trail** — every state change (and every idempotent
+- **Complete audit trail** — every state change (and every idempotent
   replay) is logged with organization, actor, event, timestamp and the exact
   version hash.
 
