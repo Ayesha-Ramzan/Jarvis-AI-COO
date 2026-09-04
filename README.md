@@ -131,6 +131,11 @@ sending `X-User-Role: owner` is still a member, and an owner sending
 users and cross-tenant access are all rejected with 403/404 (deliberately
 not distinguishable — no existence oracle is exposed).
 
+Bearer-token issuance (`POST /api/v1/auth/token`) additionally requires
+`AUTH_SIGNING_KEY` in the environment (see `.env.example`; generate one with
+`openssl rand -hex 32`). Without it the endpoint returns 503 and header auth
+remains fully functional.
+
 Seeded fixture organizations (deterministic UUIDs, stable across restarts):
 
 | Organization     | ID                                     |
