@@ -4,14 +4,14 @@ Start time: 2026-09-03 (initial build); audit + fixes pass 2026-09-04
 Last updated: 2026-09-04T06:10+05:00 (late-fixes pass)
 
 ## Phase status
-- [x] Schema Schema & domain model (organizations, memberships, skills, skill_versions, audit_log — migrations 0001-0005) domain model (organizations, memberships, skills, skill_versions, tool_approvals, audit_log - migrations 0001-0006; PG trigger enforces version immutability)
+- [x] Schema & domain model (organizations, memberships, skills, skill_versions, tool_approvals, audit_log — migrations 0001-0006; PG trigger enforces version immutability)
 - [x] Auth & tenant scoping (header identity + membership-resolved roles, ContextVar + global query filter)
 - [x] Core lifecycle routes (draft create/update, list, read+versions, immutable versions, owner-only activate/disable, department runtime selection)
 - [x] Tests (10 mandatory + boundary/sanitization/config suite: 66 tests + 1 PG-only trigger test, all green — run 2026-09-04)
 - [x] Docker Compose / .env.example / README (compose verified live from clean state on PostgreSQL 16)
 - [x] Architecture note / limitations / final report (7 ADRs, FINAL-REPORT.md, known limitations in README)
 
-## Mandatory test checklist (from the spec — all actually green, `pytest -q`: 49 passed)
+## Mandatory test checklist (from the spec — all actually green, `pytest -q`: 66 passed + 1 PG-only skip)
 - [x] Same-organization create/read succeeds — test_same_org_create_and_read_succeeds
 - [x] Cross-organization read is denied — test_cross_org_read_is_denied
 - [x] Cross-organization update is denied — test_cross_org_update_is_denied

@@ -153,13 +153,12 @@ Seeded fixture memberships (one owner + one member per organization):
 | `GET /api/v1/skills?status=draft\|active\|disabled` | any member | list this org's skills |
 | `GET /api/v1/skills/{id}`                        | any member | read one skill + all versions |
 | `PATCH /api/v1/skills/{id}`                      | any member | edit a **draft** (409 once active/disabled) |
-| `POST /api/v1/skills/{id}/versions`              | any member | snapshot a new **immutable** version (active skills only) |
+| `POST /api/v1/skills/{id}/versions`              | any member | snapshot a new **immutable** version (body: `name`, `department`, `content` required; `description`, `requested_tools` optional; active skills only) |
 | `POST /api/v1/skills/{id}/activate`              | owner only | activate (draft → v1 snapshot, or switch active version); idempotent |
 | `POST /api/v1/skills/{id}/disable`               | owner only | disable (terminal); idempotent |
 | `POST /api/v1/skills/{id}/versions/{vid}/tools/{tool}/approve` | owner only | explicitly grant one requested tool for that version; idempotent |
 | `GET /api/v1/skills/departments/{dept}/active-skills` | runtime | **active-only** department selection |
 | `GET /api/v1/skills/{id}/audit`                  | any member | audit trail for the skill |
-| `POST /api/v1/auth/token`                      | any member | exchange header identity for a short-lived HMAC bearer token (requires `AUTH_SIGNING_KEY`) |
 | `POST /api/v1/auth/token`                      | any member | exchange header identity for a short-lived HMAC bearer token (requires `AUTH_SIGNING_KEY`) |
 | `GET /healthz`                                   | —          | liveness probe |
 
@@ -179,12 +178,21 @@ curl -s -X POST localhost:8000/api/v1/skills/<SKILL_ID>/activate \
   -H "X-Organization-Id: 3de6e8a0-3623-5f2e-a708-9e338dcde4b2" \
   -H "X-User-Id: alice" -H "X-User-Role: owner" -H "Content-Type: application/json" -d '{}'
 
-# 3. Runtime department selection returns only active skills with their version
+# 3. While active, snapshot a new immutable version (body: name, department
+#    and content are required; the active version row itself never changes)
+curl -s -X POST localhost:8000/api/v1/skills/<SKILL_ID>/versions \
+  -H "X-Organization-Id: 3de6e8a0-3623-5f2e-a708-9e338dcde4b2" \
+  -H "X-User-Id: alice" -H "X-User-Role: owner" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Invoice Chaser v2","department":"finance",
+       "content":"You are an AR assistant. Escalate after 3 reminders."}'
+
+# 4. Runtime department selection returns only active skills with their version
 curl -s localhost:8000/api/v1/skills/departments/finance/active-skills \
   -H "X-Organization-Id: 3de6e8a0-3623-5f2e-a708-9e338dcde4b2" \
   -H "X-User-Id: alice" -H "X-User-Role: owner"
 
-# 4. XYZ's owner cannot see ABC's skill: same call with the XYZ header
+# 5. XYZ's owner cannot see ABC's skill: same call with the XYZ header
 #    against /api/v1/skills/<SKILL_ID> returns 404.
 ```
 
@@ -399,7 +407,7 @@ app/
 ├── schemas.py         # Pydantic validation, sanitizers, closed tool catalogue
 ├── audit.py           # audit-log writer
 └── routers/skills.py  # all /api/v1/skills endpoints
-alembic/versions/      # 5 linear migrations
+alembic/versions/      # 6 linear migrations
 tests: isolation, lifecycle, immutability, tool approvals
 docs/ARCHITECTURE_DECISIONS.md
 ```
@@ -410,12 +418,15 @@ docs/ARCHITECTURE_DECISIONS.md
   deployment would verify signed tokens. Role authorization, however, is
   fully server-side via the `memberships` table — the `X-User-Role` header
   is never trusted.
-- No pagination on list endpoints (fine for the slice's data volume).
+- Pagination is offset-based (`limit`/`offset` + `X-Total-Count`); no cursor
+  pagination or sort options.
 - SQLite is used for the dedicated test database only; production is
   PostgreSQL. Rationale in `docs/ARCHITECTURE_DECISIONS.md`.
 - Strict input sanitizers reject SQL-comment sequences (`--`, `/* */`) even
   inside free text — an intentional, documented strictness trade-off.
-- No rate limiting / WAF; assumed to be handled by the edge in production.
+- Rate limiting is an in-process per-identity sliding window (429 +
+  `Retry-After`); no distributed limiter or WAF — assumed at the edge in
+  production.
 
 ## Final report
 

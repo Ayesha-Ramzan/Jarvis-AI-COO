@@ -5,10 +5,10 @@ Start time: 2026-09-03, 11:00 PM (first commit 22:32)
 Finish time: 2026-09-04, 5:00 AM
 Approximate hours: ~6 (single continuous session: build → audit → fixes → push)
 Final code commit SHA: `fea589763a43587e2eea14856f6085b6da00afe4`
-(this SHA names the final commit of all code, tests, fixes and submission
-artifacts; the report commit that records this line is itself the
-repository's last commit — a commit cannot contain its own hash. Verify:
-`git cat-file -t 8ec77b28222760180c568758c1288283b65d9b7a` → commit)
+(verifiable via `git cat-file -t fea589763a43587e2eea14856f6085b6da00afe4`
+→ commit. Every commit after it is documentation-only; the repository's
+last commit is the report commit itself — a commit cannot contain its own
+hash.)
 
 Goal achieved: Yes. The full workflow — authenticated organization → draft
 create → review → owner activation → active retrieval → exact-version audit
@@ -18,7 +18,7 @@ construction.
 
 Architecture decisions:
 - PostgreSQL 16 + SQLAlchemy 2.0 async sessions + Alembic migrations
-  (0001-0005); SQLite in-memory only for the dedicated test database (ADR-5).
+  (0001-0006); SQLite in-memory only for the dedicated test database (ADR-5).
 - Global tenant isolation: request-scoped `TenantContext` in a ContextVar,
   enforced by a SQLAlchemy `do_orm_execute` listener applying
   `with_loader_criteria(organization_id == tenant)` to every ORM SELECT on
@@ -78,18 +78,23 @@ Security/isolation evidence:
   → fixture seeding → healthy API).
 
 Known limitations:
-- Header-based identity is an evaluation shortcut (no signed tokens); role
-  authorization itself is fully server-side via memberships.
-- No pagination, no rate limiting (edge concern), strict sanitizers reject
-  SQL comment sequences in free text (documented trade-off).
-- Tests run on SQLite by design; PostgreSQL is exercised via Alembic, the
-  compose stack and the compose `test` service (rationale in ADR-5).
-- No database-level trigger preventing in-place UPDATE of active version
-  rows; immutability is enforced at the application layer and audited.
+- Identity verification is a lightweight HMAC-SHA256 bearer token minted by
+  the API itself (no external identity provider, no token revocation or key
+  rotation); role authorization itself is fully server-side via memberships.
+- List pagination is offset-based (`limit`/`offset` + `X-Total-Count`) with
+  no cursor pagination or sort options; rate limiting is a simple in-process
+  sliding window per identity (no distributed limiter or WAF — assumed at the
+  edge in production).
+- Strict sanitizers reject SQL comment sequences in free text (documented
+  trade-off).
+- Tests run on SQLite by design; PostgreSQL is exercised via Alembic, CI and
+  the compose stack (rationale in ADR-5).
+- Version immutability is DB-enforced only on PostgreSQL (migration 0006
+  trigger); the SQLite test path relies on the application layer.
 
-What I would implement next: signed-token authentication, pagination,
-optimistic concurrency (ETags), Prometheus metrics, outbox-based audit
-streaming.
+What I would implement next: external identity provider with token
+revocation and key rotation, cursor pagination and sorting, optimistic
+concurrency (ETags), Prometheus metrics, outbox-based audit streaming.
 
 AI tools used, if any: Kimi Code CLI (assistant pair-programming; an
 earlier LLM-assisted audit pass produced AUDIT-REPORT.md findings F-1..F-6,

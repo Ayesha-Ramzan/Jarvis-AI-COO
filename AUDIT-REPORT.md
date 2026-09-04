@@ -3,6 +3,15 @@
 Audited on: 2026-09-04 (third, post-late-fixes audit)
 Repo / commit audited: `87ae402d48b44bb7b6750178e014155726c43ea4` (final code tree, pushed to https://github.com/Ayesha-Ramzan/Jarvis-AI-COO)
 
+> **Consistency addendum (2026-09-04, hardening pass):** the numbers below were
+> accurate as of commit `87ae402` — the suite was then **52 passed** and
+> migrations **0001–0005**. The subsequent 100/100 hardening pass (commit
+> `294c569`) grew the suite to **66 passed + 1 PG-only skip** and added
+> migration **0006** (the `skill_versions` immutability trigger), plus
+> bearer-token auth, pagination and rate limiting. The counts in this report
+> are the historical evidence of that audit pass, not the current state; see
+> README.md and FINAL-REPORT.md for current numbers.
+
 This is the **final audit**, run after the live-API review round found three
 issues (one functional bug, two accuracy/process defects). Every claim below
 was produced this session with a command that actually ran — no assumptions.
