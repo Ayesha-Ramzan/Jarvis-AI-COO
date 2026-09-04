@@ -33,18 +33,35 @@ from app.tenant import TenantContext, tenant_context_var
 
 async def get_tenant_context(
     db: Annotated[AsyncSession, Depends(get_db)],
-    x_organization_id: Annotated[str, Header(alias="X-Organization-Id")],
-    x_user_id: Annotated[str, Header(alias="X-User-Id")],
+    x_organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+    x_user_id: Annotated[str | None, Header(alias="X-User-Id")] = None,
     x_user_role: Annotated[str | None, Header(alias="X-User-Role")] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> AsyncGenerator[TenantContext, None]:
-    organization_id = x_organization_id.strip()
-    user_id = x_user_id.strip()
+    # Bearer-token identity takes precedence when presented and valid. The
+    # token carries identity only - the role is still resolved from the
+    # memberships table below, so a token can never elevate privileges.
+    if authorization and authorization.lower().startswith("bearer "):
+        from app.config import get_settings
+        from app.tokens import TokenError, verify_token
 
-    if not organization_id or not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="X-Organization-Id and X-User-Id headers must be non-empty",
-        )
+        raw = authorization.split(" ", 1)[1].strip()
+        try:
+            claims = verify_token(raw, get_settings().auth_signing_key)
+        except TokenError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unknown organization or insufficient privileges",
+            )
+        organization_id, user_id = claims.organization_id, claims.user_id
+    else:
+        organization_id = (x_organization_id or "").strip()
+        user_id = (x_user_id or "").strip()
+        if not organization_id or not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="X-Organization-Id and X-User-Id headers must be non-empty",
+            )
 
     organization = await db.get(Organization, organization_id)
     if organization is None:

@@ -16,7 +16,7 @@ import hashlib
 import json
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -149,13 +149,20 @@ async def create_skill_draft(
 async def list_skills(
     db: Annotated[AsyncSession, Depends(get_db)],
     context: Annotated[TenantContext, Depends(get_tenant_context)],
+    response: Response,
     skill_status: Annotated[SkillStatusFilter | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[SkillSummaryOut]:
-    stmt = select(Skill).order_by(Skill.created_at.desc())
+    base = select(Skill)
     if skill_status is not None:
-        stmt = stmt.where(Skill.status == skill_status)
-    result = await db.execute(stmt)
+        base = base.where(Skill.status == skill_status)
+    total = await db.scalar(select(func.count()).select_from(base.subquery()))
+    result = await db.execute(
+        base.order_by(Skill.created_at.desc()).offset(offset).limit(limit)
+    )
     skills = result.scalars().unique().all()
+    response.headers["X-Total-Count"] = str(total or 0)
     return [SkillSummaryOut.model_validate(s) for s in skills]
 
 
@@ -174,6 +181,9 @@ async def get_active_skills_for_department(
     department: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     context: Annotated[TenantContext, Depends(get_tenant_context)],
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[DepartmentSkillOut]:
     cleaned_department = department.strip()
     if not cleaned_department:
@@ -231,7 +241,8 @@ async def get_active_skills_for_department(
                 approved_tools=sorted(approved),
             )
         )
-    return payload
+    response.headers["X-Total-Count"] = str(len(payload))
+    return payload[offset : offset + limit]
 
 
 @router.get(
@@ -675,12 +686,15 @@ async def get_skill_audit_trail(
     skill_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     context: Annotated[TenantContext, Depends(get_tenant_context)],
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[AuditLogOut]:
     await _get_skill_or_404(db, skill_id)
-    stmt = (
-        select(AuditLog)
-        .where(AuditLog.skill_id == skill_id)
-        .order_by(AuditLog.created_at.asc())
+    base = select(AuditLog).where(AuditLog.skill_id == skill_id)
+    total = await db.scalar(select(func.count()).select_from(base.subquery()))
+    result = await db.execute(
+        base.order_by(AuditLog.created_at.asc()).offset(offset).limit(limit)
     )
-    result = await db.execute(stmt)
+    response.headers["X-Total-Count"] = str(total or 0)
     return [AuditLogOut.model_validate(row) for row in result.scalars().all()]

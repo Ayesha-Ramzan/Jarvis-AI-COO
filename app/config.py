@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     # Idempotently upserts the two evaluation fixture organizations on startup.
     seed_fixture_organizations: bool = True
 
+    # HMAC key for bearer-token auth (Authorization: Bearer). No default:
+    # when unset, token issuance is disabled and bearer tokens are refused.
+    auth_signing_key: str = ""
+
+    # Simple in-process sliding-window rate limit per authenticated identity
+    # (requests per minute). 0 disables limiting (tests disable it).
+    rate_limit_per_minute: int = 120
+
     @property
     def resolved_database_url(self) -> str:
         if self.database_url:

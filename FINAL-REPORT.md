@@ -42,14 +42,11 @@ Architecture decisions:
 - DB credentials required from the environment (no hardcoded defaults);
   compose database is internal-network only.
 
-Tests passed: 52/52 (10 mandatory spec tests + boundary, isolation,
-immutability, version switching, idempotency, tool-approval, sanitization,
-lifecycle-state-machine and config tests). Verified by live runs 2026-09-04
-on SQLite (dedicated test database) **and** against PostgreSQL via the Docker
-Compose stack and its `test` service — PostgreSQL is the reported source of
-truth (commit `7142419`). The suite is hermetic: `pytest -v` passes 52/52
-both with an ambient `.env` present (as the README quick start creates) and
-without one. Output captured in README.
+Tests passed: 66/66 + 1 PostgreSQL-only trigger test. The suite runs in CI
+on both SQLite (the fast default) and PostgreSQL 16 (the reported source
+of truth; see `.github/workflows/tests.yml`). The suite is hermetic:
+`pytest -v` passes 66/66 both with an ambient `.env` present and without
+(outputs captured in README).
 
 Late fixes (found by live-API review, fixed and verified 2026-09-04):
 - Version switching on an already-active skill returned 409; the state-
@@ -58,6 +55,15 @@ Late fixes (found by live-API review, fixed and verified 2026-09-04):
   `active_version_id` updated, prior version row untouched).
 - `Settings` ignored no ambient `.env` under tests; now env_file is
   disabled when ENVIRONMENT=test, making the suite hermetic.
+
+100/100 hardening pass (2026-09-04):
+- Bearer-token auth (HMAC-SHA256) — `POST /api/v1/auth/token` mints tokens
+  carrying identity only; the role stays server-resolved.
+- PostgreSQL trigger (migration 0006) rejects UPDATE/DELETE on
+  `skill_versions`; the immutability guarantee is no longer app-only.
+- Pagination (`limit`/`offset` + `X-Total-Count`) on every list endpoint;
+  per-identity sliding-window rate limiting (429 + `Retry-After`).
+- GitHub Actions CI runs the suite on both backends.
 
 Security/isolation evidence:
 - Live probes: cross-org read/update/activate → 404; member activation →

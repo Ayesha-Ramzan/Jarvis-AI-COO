@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-async-green)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
-![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-66%20passing-brightgreen)
 ![License](https://img.shields.io/badge/status-evaluation%20slice-orange)
 
 A privacy-first, multi-tenant **FastAPI** backend where organizations create,
@@ -16,7 +16,7 @@ by per-route checks.
 |---|---|
 | **Framework** | FastAPI (Python 3.12+), fully async |
 | **Database** | PostgreSQL 16 · SQLAlchemy 2.0 async · Alembic migrations |
-| **Tests** | 52 passing (pytest + pytest-asyncio), incl. a 10-test mandatory acceptance matrix |
+| **Tests** | 66 passing (+ 1 PG-only trigger test) (pytest + pytest-asyncio), incl. a 10-test mandatory acceptance matrix |
 | **Deployment** | Multi-stage Dockerfile + Docker Compose (app + PostgreSQL, zero manual provisioning) |
 
 ## Why this design is safe by construction
@@ -38,6 +38,14 @@ by per-route checks.
 - **Complete audit trail** — every state change (and every idempotent
   replay) is logged with organization, actor, event, timestamp and the exact
   version hash.
+- **Bearer-token auth** — `POST /api/v1/auth/token` mints HMAC-SHA256 tokens
+  carrying identity only; the role stays server-resolved, so a token can
+  never elevate privileges.
+- **Pagination + rate limit** — list endpoints accept `limit`/`offset` with
+  `X-Total-Count`; per-identity sliding-window rate limiting (429 +
+  `Retry-After`).
+- **DB-enforced immutability** — a PostgreSQL trigger on `skill_versions`
+  rejects UPDATE/DELETE; the guarantee is no longer app-only.
 
 ## Table of contents
 
@@ -151,6 +159,8 @@ Seeded fixture memberships (one owner + one member per organization):
 | `POST /api/v1/skills/{id}/versions/{vid}/tools/{tool}/approve` | owner only | explicitly grant one requested tool for that version; idempotent |
 | `GET /api/v1/skills/departments/{dept}/active-skills` | runtime | **active-only** department selection |
 | `GET /api/v1/skills/{id}/audit`                  | any member | audit trail for the skill |
+| `POST /api/v1/auth/token`                      | any member | exchange header identity for a short-lived HMAC bearer token (requires `AUTH_SIGNING_KEY`) |
+| `POST /api/v1/auth/token`                      | any member | exchange header identity for a short-lived HMAC bearer token (requires `AUTH_SIGNING_KEY`) |
 | `GET /healthz`                                   | —          | liveness probe |
 
 ### Example session (curl)
@@ -204,58 +214,73 @@ configfile: pytest.ini
 testpaths: tests
 plugins: anyio-4.15.0, asyncio-1.4.0, env-1.1.5
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
-collecting ... collected 52 items
+collecting ... collected 67 items
 
-tests/test_config.py::test_no_hardcoded_database_credentials PASSED      [  1%]
-tests/test_config.py::test_resolved_url_requires_credentials PASSED      [  3%]
-tests/test_config.py::test_database_url_override_wins PASSED             [  5%]
-tests/test_config.py::test_individual_parts_build_url PASSED             [  7%]
-tests/test_lifecycle.py::test_status_column_is_enum_backed PASSED        [  9%]
-tests/test_lifecycle.py::test_transition_map_is_explicit_and_terminal PASSED [ 11%]
-tests/test_migrations.py::test_all_revision_ids_fit_alembic_version_column PASSED [ 13%]
-tests/test_migrations.py::test_migration_chain_is_linear_and_grounded PASSED [ 15%]
-tests/test_skills.py::test_same_org_create_and_read_succeeds PASSED      [ 17%]
-tests/test_skills.py::test_same_org_list_only_shows_own_skills PASSED    [ 19%]
-tests/test_skills.py::test_list_status_filter_matches_lifecycle_state PASSED [ 21%]
-tests/test_skills.py::test_draft_can_be_updated_in_place PASSED          [ 23%]
-tests/test_skills.py::test_cross_org_read_is_denied PASSED               [ 25%]
-tests/test_skills.py::test_cross_org_update_is_denied PASSED             [ 26%]
-tests/test_skills.py::test_cross_org_activate_is_denied PASSED           [ 28%]
-tests/test_skills.py::test_cross_org_version_creation_is_denied PASSED   [ 30%]
-tests/test_skills.py::test_unknown_organization_is_rejected PASSED       [ 32%]
-tests/test_skills.py::test_member_claiming_owner_in_header_is_still_denied PASSED [ 34%]
-tests/test_skills.py::test_owner_with_member_header_role_still_activates PASSED [ 36%]
-tests/test_skills.py::test_bogus_role_header_is_ignored PASSED           [ 38%]
-tests/test_skills.py::test_non_member_user_is_rejected PASSED            [ 40%]
-tests/test_skills.py::test_non_owner_activation_is_denied PASSED         [ 42%]
-tests/test_skills.py::test_non_owner_disable_is_denied PASSED            [ 44%]
-tests/test_skills.py::test_draft_skill_is_not_returned_by_department_runtime PASSED [ 46%]
-tests/test_skills.py::test_disabled_skill_is_excluded_from_runtime_selection PASSED [ 48%]
-tests/test_skills.py::test_disabled_skill_cannot_be_reactivated PASSED   [ 50%]
-tests/test_skills.py::test_disable_is_idempotent PASSED                  [ 51%]
-tests/test_skills.py::test_active_skill_cannot_be_modified_in_place PASSED [ 53%]
-tests/test_skills.py::test_active_version_is_immutable_new_version_required PASSED [ 55%]
-tests/test_skills.py::test_draft_skill_cannot_accept_new_versions PASSED [ 57%]
-tests/test_skills.py::test_version_rows_carry_organization_id PASSED     [ 59%]
-tests/test_skills.py::test_activation_of_foreign_version_is_denied PASSED [ 61%]
-tests/test_skills.py::test_duplicate_activation_is_idempotent_and_safe PASSED [ 63%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[shell.exec] PASSED [ 65%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[db.drop_table] PASSED [ 67%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[system.wipe] PASSED [ 69%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[teapot.brew] PASSED [ 71%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[Not A Tool!] PASSED [ 73%]
-tests/test_skills.py::test_sql_injection_in_text_fields_is_rejected PASSED [ 75%]
-tests/test_skills.py::test_trailing_whitespace_and_duplicates_are_normalized PASSED [ 76%]
-tests/test_skills.py::test_active_skill_can_switch_to_new_version PASSED [ 78%]
-tests/test_skills.py::test_cross_org_version_switch_is_denied PASSED     [ 80%]
-tests/test_skills.py::test_activation_of_foreign_org_version_is_denied PASSED [ 82%]
-tests/test_skills.py::test_full_workflow_create_review_activate_retrieve_audit PASSED [ 84%]
-tests/test_skills.py::test_audit_trail_is_tenant_scoped PASSED           [ 86%]
-tests/test_tool_approvals.py::test_requested_tools_are_not_granted_automatically PASSED [ 88%]
-tests/test_tool_approvals.py::test_owner_approval_grants_runtime_tool PASSED [ 90%]
-tests/test_tool_approvals.py::test_non_owner_approval_is_denied PASSED   [ 92%]
-tests/test_tool_approvals.py::test_cross_org_approval_is_denied_and_invisible PASSED [ 94%]
-tests/test_tool_approvals.py::test_approving_tool_not_requested_by_version_is_rejected PASSED [ 96%]
+tests/test_auth_tokens.py::test_token_roundtrip_and_identity_only_claims PASSED [  1%]
+tests/test_auth_tokens.py::test_tampered_token_is_rejected PASSED        [  2%]
+tests/test_auth_tokens.py::test_expired_token_is_rejected PASSED         [  4%]
+tests/test_auth_tokens.py::test_header_session_can_exchange_for_bearer_token PASSED [  5%]
+tests/test_auth_tokens.py::test_bearer_token_role_is_still_server_resolved PASSED [  7%]
+tests/test_auth_tokens.py::test_cross_org_bearer_token_is_isolated PASSED [  8%]
+tests/test_auth_tokens.py::test_tampered_and_expired_bearer_tokens_rejected_over_http PASSED [ 10%]
+tests/test_config.py::test_no_hardcoded_database_credentials PASSED      [ 11%]
+tests/test_config.py::test_resolved_url_requires_credentials PASSED      [ 13%]
+tests/test_config.py::test_database_url_override_wins PASSED             [ 14%]
+tests/test_config.py::test_individual_parts_build_url PASSED             [ 16%]
+tests/test_db_immutability.py::test_postgres_trigger_blocks_update_and_delete SKIPPED [ 17%]
+tests/test_db_immutability.py::test_immutability_guarantee_placeholder_on_sqlite PASSED [ 19%]
+tests/test_lifecycle.py::test_status_column_is_enum_backed PASSED        [ 20%]
+tests/test_lifecycle.py::test_transition_map_is_explicit_and_terminal PASSED [ 22%]
+tests/test_migrations.py::test_all_revision_ids_fit_alembic_version_column PASSED [ 23%]
+tests/test_migrations.py::test_migration_chain_is_linear_and_grounded PASSED [ 25%]
+tests/test_pagination_ratelimit.py::test_limiter_allows_up_to_limit_then_blocks PASSED [ 26%]
+tests/test_pagination_ratelimit.py::test_limiter_window_slides PASSED    [ 28%]
+tests/test_pagination_ratelimit.py::test_limiter_keys_are_independent_and_zero_disables PASSED [ 29%]
+tests/test_pagination_ratelimit.py::test_list_skills_pagination_and_total_count PASSED [ 31%]
+tests/test_pagination_ratelimit.py::test_audit_trail_pagination_and_total_count PASSED [ 32%]
+tests/test_pagination_ratelimit.py::test_department_runtime_pagination PASSED [ 34%]
+tests/test_skills.py::test_same_org_create_and_read_succeeds PASSED      [ 35%]
+tests/test_skills.py::test_same_org_list_only_shows_own_skills PASSED    [ 37%]
+tests/test_skills.py::test_list_status_filter_matches_lifecycle_state PASSED [ 38%]
+tests/test_skills.py::test_draft_can_be_updated_in_place PASSED          [ 40%]
+tests/test_skills.py::test_cross_org_read_is_denied PASSED               [ 41%]
+tests/test_skills.py::test_cross_org_update_is_denied PASSED             [ 43%]
+tests/test_skills.py::test_cross_org_activate_is_denied PASSED           [ 44%]
+tests/test_skills.py::test_cross_org_version_creation_is_denied PASSED   [ 46%]
+tests/test_skills.py::test_unknown_organization_is_rejected PASSED       [ 47%]
+tests/test_skills.py::test_member_claiming_owner_in_header_is_still_denied PASSED [ 49%]
+tests/test_skills.py::test_owner_with_member_header_role_still_activates PASSED [ 50%]
+tests/test_skills.py::test_bogus_role_header_is_ignored PASSED           [ 52%]
+tests/test_skills.py::test_non_member_user_is_rejected PASSED            [ 53%]
+tests/test_skills.py::test_non_owner_activation_is_denied PASSED         [ 55%]
+tests/test_skills.py::test_non_owner_disable_is_denied PASSED            [ 56%]
+tests/test_skills.py::test_draft_skill_is_not_returned_by_department_runtime PASSED [ 58%]
+tests/test_skills.py::test_disabled_skill_is_excluded_from_runtime_selection PASSED [ 59%]
+tests/test_skills.py::test_disabled_skill_cannot_be_reactivated PASSED   [ 61%]
+tests/test_skills.py::test_disable_is_idempotent PASSED                  [ 62%]
+tests/test_skills.py::test_active_skill_cannot_be_modified_in_place PASSED [ 64%]
+tests/test_skills.py::test_active_version_is_immutable_new_version_required PASSED [ 65%]
+tests/test_skills.py::test_draft_skill_cannot_accept_new_versions PASSED [ 67%]
+tests/test_skills.py::test_version_rows_carry_organization_id PASSED     [ 68%]
+tests/test_skills.py::test_activation_of_foreign_version_is_denied PASSED [ 70%]
+tests/test_skills.py::test_duplicate_activation_is_idempotent_and_safe PASSED [ 71%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[shell.exec] PASSED [ 73%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[db.drop_table] PASSED [ 74%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[system.wipe] PASSED [ 76%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[teapot.brew] PASSED [ 77%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[Not A Tool!] PASSED [ 79%]
+tests/test_skills.py::test_sql_injection_in_text_fields_is_rejected PASSED [ 80%]
+tests/test_skills.py::test_trailing_whitespace_and_duplicates_are_normalized PASSED [ 82%]
+tests/test_skills.py::test_active_skill_can_switch_to_new_version PASSED [ 83%]
+tests/test_skills.py::test_cross_org_version_switch_is_denied PASSED     [ 85%]
+tests/test_skills.py::test_activation_of_foreign_org_version_is_denied PASSED [ 86%]
+tests/test_skills.py::test_full_workflow_create_review_activate_retrieve_audit PASSED [ 88%]
+tests/test_skills.py::test_audit_trail_is_tenant_scoped PASSED           [ 89%]
+tests/test_tool_approvals.py::test_requested_tools_are_not_granted_automatically PASSED [ 91%]
+tests/test_tool_approvals.py::test_owner_approval_grants_runtime_tool PASSED [ 92%]
+tests/test_tool_approvals.py::test_non_owner_approval_is_denied PASSED   [ 94%]
+tests/test_tool_approvals.py::test_cross_org_approval_is_denied_and_invisible PASSED [ 95%]
+tests/test_tool_approvals.py::test_approving_tool_not_requested_by_version_is_rejected PASSED [ 97%]
 tests/test_tool_approvals.py::test_duplicate_approval_is_idempotent_and_audited PASSED [ 98%]
 tests/test_tool_approvals.py::test_approvals_do_not_leak_across_orgs_runtime PASSED [100%]
 
@@ -265,7 +290,7 @@ tests/test_tool_approvals.py::test_approving_tool_not_requested_by_version_is_re
     return await dependant.call(**values)
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================== 52 passed, 1 warning in 11.35s ========================
+================== 66 passed, 1 skipped, 1 warning in 13.18s ===================
 ```
 
 **Run 2 — without `.env`:**
@@ -279,112 +304,73 @@ configfile: pytest.ini
 testpaths: tests
 plugins: anyio-4.15.0, asyncio-1.4.0, env-1.1.5
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
-collecting ... collected 52 items
+collecting ... collected 67 items
 
-tests/test_config.py::test_no_hardcoded_database_credentials PASSED      [  1%]
-tests/test_config.py::test_resolved_url_requires_credentials PASSED      [  3%]
-tests/test_config.py::test_database_url_override_wins PASSED             [  5%]
-tests/test_config.py::test_individual_parts_build_url PASSED             [  7%]
-tests/test_lifecycle.py::test_status_column_is_enum_backed PASSED        [  9%]
-tests/test_lifecycle.py::test_transition_map_is_explicit_and_terminal PASSED [ 11%]
-tests/test_migrations.py::test_all_revision_ids_fit_alembic_version_column PASSED [ 13%]
-tests/test_migrations.py::test_migration_chain_is_linear_and_grounded PASSED [ 15%]
-tests/test_skills.py::test_same_org_create_and_read_succeeds PASSED      [ 17%]
-tests/test_skills.py::test_same_org_list_only_shows_own_skills PASSED    [ 19%]
-tests/test_skills.py::test_list_status_filter_matches_lifecycle_state PASSED [ 21%]
-tests/test_skills.py::test_draft_can_be_updated_in_place PASSED          [ 23%]
-tests/test_skills.py::test_cross_org_read_is_denied PASSED               [ 25%]
-tests/test_skills.py::test_cross_org_update_is_denied PASSED             [ 26%]
-tests/test_skills.py::test_cross_org_activate_is_denied PASSED           [ 28%]
-tests/test_skills.py::test_cross_org_version_creation_is_denied PASSED   [ 30%]
-tests/test_skills.py::test_unknown_organization_is_rejected PASSED       [ 32%]
-tests/test_skills.py::test_member_claiming_owner_in_header_is_still_denied PASSED [ 34%]
-tests/test_skills.py::test_owner_with_member_header_role_still_activates PASSED [ 36%]
-tests/test_skills.py::test_bogus_role_header_is_ignored PASSED           [ 38%]
-tests/test_skills.py::test_non_member_user_is_rejected PASSED            [ 40%]
-tests/test_skills.py::test_non_owner_activation_is_denied PASSED         [ 42%]
-tests/test_skills.py::test_non_owner_disable_is_denied PASSED            [ 44%]
-tests/test_skills.py::test_draft_skill_is_not_returned_by_department_runtime PASSED [ 46%]
-tests/test_skills.py::test_disabled_skill_is_excluded_from_runtime_selection PASSED [ 48%]
-tests/test_skills.py::test_disabled_skill_cannot_be_reactivated PASSED   [ 50%]
-tests/test_skills.py::test_disable_is_idempotent PASSED                  [ 51%]
-tests/test_skills.py::test_active_skill_cannot_be_modified_in_place PASSED [ 53%]
-tests/test_skills.py::test_active_version_is_immutable_new_version_required PASSED [ 55%]
-tests/test_skills.py::test_draft_skill_cannot_accept_new_versions PASSED [ 57%]
-tests/test_skills.py::test_version_rows_carry_organization_id PASSED     [ 59%]
-tests/test_skills.py::test_activation_of_foreign_version_is_denied PASSED [ 61%]
-tests/test_skills.py::test_duplicate_activation_is_idempotent_and_safe PASSED [ 63%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[shell.exec] PASSED [ 65%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[db.drop_table] PASSED [ 67%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[system.wipe] PASSED [ 69%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[teapot.brew] PASSED [ 71%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[Not A Tool!] PASSED [ 73%]
-tests/test_skills.py::test_sql_injection_in_text_fields_is_rejected PASSED [ 75%]
-tests/test_skills.py::test_trailing_whitespace_and_duplicates_are_normalized PASSED [ 76%]
-tests/test_skills.py::test_active_skill_can_switch_to_new_version PASSED [ 78%]
-tests/test_skills.py::test_cross_org_version_switch_is_denied PASSED     [ 80%]
-tests/test_skills.py::test_activation_of_foreign_org_version_is_denied PASSED [ 82%]
-tests/test_skills.py::test_full_workflow_create_review_activate_retrieve_audit PASSED [ 84%]
-tests/test_skills.py::test_audit_trail_is_tenant_scoped ============================= test session starts ==============================
-platform linux -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0 -- /home/kraveil/Projects/test-project/.venv/bin/python
-cachedir: .pytest_cache
-rootdir: /home/kraveil/Projects/test-project
-configfile: pytest.ini
-testpaths: tests
-plugins: anyio-4.15.0, asyncio-1.4.0, env-1.1.5
-asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
-collecting ... collected 52 items
-
-tests/test_config.py::test_no_hardcoded_database_credentials PASSED      [  1%]
-tests/test_config.py::test_resolved_url_requires_credentials PASSED      [  3%]
-tests/test_config.py::test_database_url_override_wins PASSED             [  5%]
-tests/test_config.py::test_individual_parts_build_url PASSED             [  7%]
-tests/test_lifecycle.py::test_status_column_is_enum_backed PASSED        [  9%]
-tests/test_lifecycle.py::test_transition_map_is_explicit_and_terminal PASSED [ 11%]
-tests/test_migrations.py::test_all_revision_ids_fit_alembic_version_column PASSED [ 13%]
-tests/test_migrations.py::test_migration_chain_is_linear_and_grounded PASSED [ 15%]
-tests/test_skills.py::test_same_org_create_and_read_succeeds PASSED      [ 17%]
-tests/test_skills.py::test_same_org_list_only_shows_own_skills PASSED    [ 19%]
-tests/test_skills.py::test_list_status_filter_matches_lifecycle_state PASSED [ 21%]
-tests/test_skills.py::test_draft_can_be_updated_in_place PASSED          [ 23%]
-tests/test_skills.py::test_cross_org_read_is_denied PASSED               [ 25%]
-tests/test_skills.py::test_cross_org_update_is_denied PASSED             [ 26%]
-tests/test_skills.py::test_cross_org_activate_is_denied PASSED           [ 28%]
-tests/test_skills.py::test_cross_org_version_creation_is_denied PASSED   [ 30%]
-tests/test_skills.py::test_unknown_organization_is_rejected PASSED       [ 32%]
-tests/test_skills.py::test_member_claiming_owner_in_header_is_still_denied PASSED [ 34%]
-tests/test_skills.py::test_owner_with_member_header_role_still_activates PASSED [ 36%]
-tests/test_skills.py::test_bogus_role_header_is_ignored PASSED           [ 38%]
-tests/test_skills.py::test_non_member_user_is_rejected PASSED            [ 40%]
-tests/test_skills.py::test_non_owner_activation_is_denied PASSED         [ 42%]
-tests/test_skills.py::test_non_owner_disable_is_denied PASSED            [ 44%]
-tests/test_skills.py::test_draft_skill_is_not_returned_by_department_runtime PASSED [ 46%]
-tests/test_skills.py::test_disabled_skill_is_excluded_from_runtime_selection PASSED [ 48%]
-tests/test_skills.py::test_disabled_skill_cannot_be_reactivated PASSED   [ 50%]
-tests/test_skills.py::test_disable_is_idempotent PASSED                  [ 51%]
-tests/test_skills.py::test_active_skill_cannot_be_modified_in_place PASSED [ 53%]
-tests/test_skills.py::test_active_version_is_immutable_new_version_required PASSED [ 55%]
-tests/test_skills.py::test_draft_skill_cannot_accept_new_versions PASSED [ 57%]
-tests/test_skills.py::test_version_rows_carry_organization_id PASSED     [ 59%]
-tests/test_skills.py::test_activation_of_foreign_version_is_denied PASSED [ 61%]
-tests/test_skills.py::test_duplicate_activation_is_idempotent_and_safe PASSED [ 63%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[shell.exec] PASSED [ 65%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[db.drop_table] PASSED [ 67%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[system.wipe] PASSED [ 69%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[teapot.brew] PASSED [ 71%]
-tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[Not A Tool!] PASSED [ 73%]
-tests/test_skills.py::test_sql_injection_in_text_fields_is_rejected PASSED [ 75%]
-tests/test_skills.py::test_trailing_whitespace_and_duplicates_are_normalized PASSED [ 76%]
-tests/test_skills.py::test_active_skill_can_switch_to_new_version PASSED [ 78%]
-tests/test_skills.py::test_cross_org_version_switch_is_denied PASSED     [ 80%]
-tests/test_skills.py::test_activation_of_foreign_org_version_is_denied PASSED [ 82%]
-tests/test_skills.py::test_full_workflow_create_review_activate_retrieve_audit PASSED [ 84%]
-tests/test_skills.py::test_audit_trail_is_tenant_scoped PASSED           [ 86%]
-tests/test_tool_approvals.py::test_requested_tools_are_not_granted_automatically PASSED [ 88%]
-tests/test_tool_approvals.py::test_owner_approval_grants_runtime_tool PASSED [ 90%]
-tests/test_tool_approvals.py::test_non_owner_approval_is_denied PASSED   [ 92%]
-tests/test_tool_approvals.py::test_cross_org_approval_is_denied_and_invisible PASSED [ 94%]
-tests/test_tool_approvals.py::test_approving_tool_not_requested_by_version_is_rejected PASSED [ 96%]
+tests/test_auth_tokens.py::test_token_roundtrip_and_identity_only_claims PASSED [  1%]
+tests/test_auth_tokens.py::test_tampered_token_is_rejected PASSED        [  2%]
+tests/test_auth_tokens.py::test_expired_token_is_rejected PASSED         [  4%]
+tests/test_auth_tokens.py::test_header_session_can_exchange_for_bearer_token PASSED [  5%]
+tests/test_auth_tokens.py::test_bearer_token_role_is_still_server_resolved PASSED [  7%]
+tests/test_auth_tokens.py::test_cross_org_bearer_token_is_isolated PASSED [  8%]
+tests/test_auth_tokens.py::test_tampered_and_expired_bearer_tokens_rejected_over_http PASSED [ 10%]
+tests/test_config.py::test_no_hardcoded_database_credentials PASSED      [ 11%]
+tests/test_config.py::test_resolved_url_requires_credentials PASSED      [ 13%]
+tests/test_config.py::test_database_url_override_wins PASSED             [ 14%]
+tests/test_config.py::test_individual_parts_build_url PASSED             [ 16%]
+tests/test_db_immutability.py::test_postgres_trigger_blocks_update_and_delete SKIPPED [ 17%]
+tests/test_db_immutability.py::test_immutability_guarantee_placeholder_on_sqlite PASSED [ 19%]
+tests/test_lifecycle.py::test_status_column_is_enum_backed PASSED        [ 20%]
+tests/test_lifecycle.py::test_transition_map_is_explicit_and_terminal PASSED [ 22%]
+tests/test_migrations.py::test_all_revision_ids_fit_alembic_version_column PASSED [ 23%]
+tests/test_migrations.py::test_migration_chain_is_linear_and_grounded PASSED [ 25%]
+tests/test_pagination_ratelimit.py::test_limiter_allows_up_to_limit_then_blocks PASSED [ 26%]
+tests/test_pagination_ratelimit.py::test_limiter_window_slides PASSED    [ 28%]
+tests/test_pagination_ratelimit.py::test_limiter_keys_are_independent_and_zero_disables PASSED [ 29%]
+tests/test_pagination_ratelimit.py::test_list_skills_pagination_and_total_count PASSED [ 31%]
+tests/test_pagination_ratelimit.py::test_audit_trail_pagination_and_total_count PASSED [ 32%]
+tests/test_pagination_ratelimit.py::test_department_runtime_pagination PASSED [ 34%]
+tests/test_skills.py::test_same_org_create_and_read_succeeds PASSED      [ 35%]
+tests/test_skills.py::test_same_org_list_only_shows_own_skills PASSED    [ 37%]
+tests/test_skills.py::test_list_status_filter_matches_lifecycle_state PASSED [ 38%]
+tests/test_skills.py::test_draft_can_be_updated_in_place PASSED          [ 40%]
+tests/test_skills.py::test_cross_org_read_is_denied PASSED               [ 41%]
+tests/test_skills.py::test_cross_org_update_is_denied PASSED             [ 43%]
+tests/test_skills.py::test_cross_org_activate_is_denied PASSED           [ 44%]
+tests/test_skills.py::test_cross_org_version_creation_is_denied PASSED   [ 46%]
+tests/test_skills.py::test_unknown_organization_is_rejected PASSED       [ 47%]
+tests/test_skills.py::test_member_claiming_owner_in_header_is_still_denied PASSED [ 49%]
+tests/test_skills.py::test_owner_with_member_header_role_still_activates PASSED [ 50%]
+tests/test_skills.py::test_bogus_role_header_is_ignored PASSED           [ 52%]
+tests/test_skills.py::test_non_member_user_is_rejected PASSED            [ 53%]
+tests/test_skills.py::test_non_owner_activation_is_denied PASSED         [ 55%]
+tests/test_skills.py::test_non_owner_disable_is_denied PASSED            [ 56%]
+tests/test_skills.py::test_draft_skill_is_not_returned_by_department_runtime PASSED [ 58%]
+tests/test_skills.py::test_disabled_skill_is_excluded_from_runtime_selection PASSED [ 59%]
+tests/test_skills.py::test_disabled_skill_cannot_be_reactivated PASSED   [ 61%]
+tests/test_skills.py::test_disable_is_idempotent PASSED                  [ 62%]
+tests/test_skills.py::test_active_skill_cannot_be_modified_in_place PASSED [ 64%]
+tests/test_skills.py::test_active_version_is_immutable_new_version_required PASSED [ 65%]
+tests/test_skills.py::test_draft_skill_cannot_accept_new_versions PASSED [ 67%]
+tests/test_skills.py::test_version_rows_carry_organization_id PASSED     [ 68%]
+tests/test_skills.py::test_activation_of_foreign_version_is_denied PASSED [ 70%]
+tests/test_skills.py::test_duplicate_activation_is_idempotent_and_safe PASSED [ 71%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[shell.exec] PASSED [ 73%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[db.drop_table] PASSED [ 74%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[system.wipe] PASSED [ 76%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[teapot.brew] PASSED [ 77%]
+tests/test_skills.py::test_invalid_or_destructive_requested_tool_is_rejected[Not A Tool!] PASSED [ 79%]
+tests/test_skills.py::test_sql_injection_in_text_fields_is_rejected PASSED [ 80%]
+tests/test_skills.py::test_trailing_whitespace_and_duplicates_are_normalized PASSED [ 82%]
+tests/test_skills.py::test_active_skill_can_switch_to_new_version PASSED [ 83%]
+tests/test_skills.py::test_cross_org_version_switch_is_denied PASSED     [ 85%]
+tests/test_skills.py::test_activation_of_foreign_org_version_is_denied PASSED [ 86%]
+tests/test_skills.py::test_full_workflow_create_review_activate_retrieve_audit PASSED [ 88%]
+tests/test_skills.py::test_audit_trail_is_tenant_scoped PASSED           [ 89%]
+tests/test_tool_approvals.py::test_requested_tools_are_not_granted_automatically PASSED [ 91%]
+tests/test_tool_approvals.py::test_owner_approval_grants_runtime_tool PASSED [ 92%]
+tests/test_tool_approvals.py::test_non_owner_approval_is_denied PASSED   [ 94%]
+tests/test_tool_approvals.py::test_cross_org_approval_is_denied_and_invisible PASSED [ 95%]
+tests/test_tool_approvals.py::test_approving_tool_not_requested_by_version_is_rejected PASSED [ 97%]
 tests/test_tool_approvals.py::test_duplicate_approval_is_idempotent_and_audited PASSED [ 98%]
 tests/test_tool_approvals.py::test_approvals_do_not_leak_across_orgs_runtime PASSED [100%]
 
@@ -394,8 +380,11 @@ tests/test_tool_approvals.py::test_approving_tool_not_requested_by_version_is_re
     return await dependant.call(**values)
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================== 52 passed, 1 warning in 11.90s ========================
+================== 66 passed, 1 skipped, 1 warning in 13.36s ===================
 ```
+
+The PostgreSQL-trigger immutability test auto-skips on SQLite and runs in CI
+against Postgres. See `.github/workflows/tests.yml`.
 
 ## Project structure
 

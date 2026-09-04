@@ -17,8 +17,9 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
+from app.ratelimit import RateLimitMiddleware, SlidingWindowLimiter
 from app.models import Membership, Organization
-from app.routers import skills
+from app.routers import auth, skills
 
 settings = get_settings()
 
@@ -101,6 +102,14 @@ app = FastAPI(
 )
 
 app.include_router(skills.router, prefix=f"{settings.api_v1_prefix}/skills")
+app.include_router(auth.router, prefix=f"{settings.api_v1_prefix}/auth")
+
+# Simple per-identity rate limiting (429 + Retry-After). 0 disables it; the
+# test suite disables it via pytest.ini so tests stay deterministic.
+app.add_middleware(
+    RateLimitMiddleware,
+    limiter=SlidingWindowLimiter(settings.rate_limit_per_minute),
+)
 
 
 @app.get(

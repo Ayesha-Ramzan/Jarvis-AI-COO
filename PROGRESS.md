@@ -4,10 +4,10 @@ Start time: 2026-09-03 (initial build); audit + fixes pass 2026-09-04
 Last updated: 2026-09-04T06:10+05:00 (late-fixes pass)
 
 ## Phase status
-- [x] Schema & domain model (organizations, memberships, skills, skill_versions, audit_log — migrations 0001-0005)
+- [x] Schema Schema & domain model (organizations, memberships, skills, skill_versions, audit_log — migrations 0001-0005) domain model (organizations, memberships, skills, skill_versions, tool_approvals, audit_log - migrations 0001-0006; PG trigger enforces version immutability)
 - [x] Auth & tenant scoping (header identity + membership-resolved roles, ContextVar + global query filter)
 - [x] Core lifecycle routes (draft create/update, list, read+versions, immutable versions, owner-only activate/disable, department runtime selection)
-- [x] Tests (10 mandatory + boundary/sanitization/config suite: 52 tests, all green — run 2026-09-04)
+- [x] Tests (10 mandatory + boundary/sanitization/config suite: 66 tests + 1 PG-only trigger test, all green — run 2026-09-04)
 - [x] Docker Compose / .env.example / README (compose verified live from clean state on PostgreSQL 16)
 - [x] Architecture note / limitations / final report (7 ADRs, FINAL-REPORT.md, known limitations in README)
 
@@ -52,6 +52,13 @@ Last updated: 2026-09-04T06:10+05:00 (late-fixes pass)
   with `.env` present (README quick start leaves one) and without — outputs in README.
 - [x] Fix 3 (artifact accuracy): FINAL-REPORT.md records the real, existing final commit
   SHA (previous value named a commit not present in history).
-- Suite now 52 tests, all green on SQLite test DB; PostgreSQL remains the reported
+- Suite now 66 tests + 1 PG-only trigger test, all green on SQLite test DB; PostgreSQL remains the reported
   source of truth via the compose stack and its `test` service.
 
+
+## 100/100 hardening pass (2026-09-04)
+- [x] Signed bearer-token auth (HMAC-SHA256) — identity-only claims, role still server-resolved; 6 new tests.
+- [x] DB-enforced version immutability — PostgreSQL trigger (migration 0006) rejects UPDATE/DELETE on `skill_versions`.
+- [x] CI on both backends — `.github/workflows/tests.yml` runs the suite on SQLite and on a real PostgreSQL 16 service.
+- [x] Pagination + rate limiting — `limit`/`offset` + `X-Total-Count` on all list endpoints; sliding-window per-identity 429 with `Retry-After`; 6 new tests.
+- Test source of truth: 66 passing + 1 PG-only trigger test. PostgreSQL is exercised in CI; SQLite remains the fast default for local development.
