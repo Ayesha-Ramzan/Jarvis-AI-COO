@@ -25,7 +25,7 @@ from app.audit import record_audit
 from app.database import get_db
 from app.dependencies import get_tenant_context, require_owner
 from app.lifecycle import can_transition
-from app.models import AuditLog, Skill, SkillStatus, SkillVersion
+from app.models import AuditLog, Skill, SkillStatus, SkillVersion, ToolApproval
 from app.schemas import (
     AuditLogOut,
     DepartmentSkillOut,
@@ -37,6 +37,7 @@ from app.schemas import (
     SkillSummaryOut,
     SkillVersionCreateIn,
     SkillVersionOut,
+    ToolApprovalOut,
 )
 from app.tenant import TenantContext
 
@@ -192,21 +193,42 @@ async def get_active_skills_for_department(
     result = await db.execute(stmt)
     skills = result.scalars().unique().all()
 
-    payload: list[DepartmentSkillOut] = []
+    active_versions: dict[str, SkillVersion] = {}
     for skill in skills:
         if not skill.active_version_id:
             continue
         active = next(
             (v for v in skill.versions if v.id == skill.active_version_id), None
         )
+        if active is not None:
+            active_versions[skill.id] = active
+
+    # A tool is only usable at runtime when the owner explicitly approved it
+    # for THIS version (spec: requested tools must not grant permissions
+    # automatically). One batched query for all active versions.
+    approved_by_version: dict[str, set[str]] = {}
+    if active_versions:
+        approval_stmt = select(ToolApproval).where(
+            ToolApproval.version_id.in_([v.id for v in active_versions.values()])
+        )
+        approval_rows = (await db.execute(approval_stmt)).scalars().all()
+        for row in approval_rows:
+            approved_by_version.setdefault(row.version_id, set()).add(row.tool)
+
+    payload: list[DepartmentSkillOut] = []
+    for skill in skills:
+        active = active_versions.get(skill.id)
         if active is None:
             continue
+        requested = set(active.requested_tools or [])
+        approved = approved_by_version.get(active.id, set()) & requested
         payload.append(
             DepartmentSkillOut(
                 skill_id=skill.id,
                 name=skill.name,
                 department=skill.department,
                 version=SkillVersionOut.model_validate(active),
+                approved_tools=sorted(approved),
             )
         )
     return payload
@@ -364,6 +386,81 @@ async def create_skill_version(
     await db.commit()
     await db.refresh(version)
     return SkillVersionOut.model_validate(version)
+
+
+@router.post(
+    "/{skill_id}/versions/{version_id}/tools/{tool}/approve",
+    response_model=ToolApprovalOut,
+    summary="Approve a requested tool for a version (owner only)",
+    description=(
+        "Grants runtime usability for one tool on one immutable version. "
+        "Requesting a tool never grants it automatically: the owner must call "
+        "this endpoint explicitly before the tool appears in the runtime "
+        "department payload. Only tools the version actually requested may be "
+        "approved. Re-approving an already approved tool is a safe, "
+        "idempotent no-op (200, state unchanged) recorded as "
+        "`tool.approval_replayed` in the audit trail."
+    ),
+)
+async def approve_tool(
+    skill_id: str,
+    version_id: str,
+    tool: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    context: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> ToolApprovalOut:
+    require_owner(context)
+    version = await _get_version_or_404(db, version_id, skill_id=skill_id)
+
+    cleaned_tool = tool.strip().lower()
+    if cleaned_tool not in (version.requested_tools or []):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Tool {cleaned_tool!r} is not requested by version "
+                f"{version.version_number}; only requested tools can be approved"
+            ),
+        )
+
+    existing = await db.scalar(
+        select(ToolApproval).where(
+            ToolApproval.version_id == version.id,
+            ToolApproval.tool == cleaned_tool,
+        )
+    )
+    if existing is not None:
+        await record_audit(
+            db,
+            tenant=context,
+            event="tool.approval_replayed",
+            skill_id=version.skill_id,
+            version_id=version.id,
+            detail={"tool": cleaned_tool, "note": "idempotent replay; no state change"},
+        )
+        await db.commit()
+        await db.refresh(existing)
+        return ToolApprovalOut.model_validate(existing)
+
+    approval = ToolApproval(
+        organization_id=context.organization_id,
+        skill_id=version.skill_id,
+        version_id=version.id,
+        tool=cleaned_tool,
+        approved_by=context.user_id,
+    )
+    db.add(approval)
+    await db.flush()
+    await record_audit(
+        db,
+        tenant=context,
+        event="tool.approved",
+        skill_id=version.skill_id,
+        version_id=version.id,
+        detail={"tool": cleaned_tool, "version_number": version.version_number},
+    )
+    await db.commit()
+    await db.refresh(approval)
+    return ToolApprovalOut.model_validate(approval)
 
 
 @router.post(

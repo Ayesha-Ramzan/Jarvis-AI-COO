@@ -186,6 +186,40 @@ class SkillVersion(Base):
     skill: Mapped[Skill] = relationship(back_populates="versions")
 
 
+class ToolApproval(Base):
+    """Explicit, owner-granted permission for one tool on one immutable version.
+
+    A skill *requesting* a tool never grants anything by itself (see
+    schemas.ALLOWED_TOOLS): the request only names what the skill wants.
+    This row is the separate, deliberate approval act - it is created
+    exclusively by the owner-only approval endpoint, one row per
+    (version, tool), which also makes re-approval a natural, auditable
+    idempotent no-op.
+    """
+
+    __tablename__ = "tool_approvals"
+    __table_args__ = (
+        UniqueConstraint("version_id", "tool", name="uq_tool_approvals_tool"),
+        Index("ix_tool_approvals_org", "organization_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    skill_id: Mapped[str] = mapped_column(
+        ForeignKey("skills.id", ondelete="CASCADE"), nullable=False
+    )
+    version_id: Mapped[str] = mapped_column(
+        ForeignKey("skill_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    tool: Mapped[str] = mapped_column(String(128), nullable=False)
+    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     __table_args__ = (

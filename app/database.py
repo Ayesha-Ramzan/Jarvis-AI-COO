@@ -3,7 +3,7 @@
 The tenant isolation filter is implemented with SQLAlchemy's
 ``with_loader_criteria``: a ``do_orm_execute`` session event transparently
 appends ``organization_id = <current tenant>`` criteria to every ORM SELECT
-for the tenant-owned models (Skill, SkillVersion, AuditLog). Routers never
+for the tenant-owned models (Skill, SkillVersion, ToolApproval, AuditLog). Routers never
 hand-write tenant filters; cross-tenant rows are invisible by construction
 and therefore surface as 404, never as data leakage.
 """
@@ -64,6 +64,11 @@ def _apply_tenant_isolation(execute_state) -> None:
             models.SkillVersion.skill.has(
                 models.Skill.organization_id == tenant.organization_id
             ),
+            include_aliases=True,
+        ),
+        with_loader_criteria(
+            models.ToolApproval,
+            models.ToolApproval.organization_id == tenant.organization_id,
             include_aliases=True,
         ),
         with_loader_criteria(

@@ -106,6 +106,7 @@ Seeded fixture memberships (one owner + one member per organization):
 | `POST /api/v1/skills/{id}/versions`              | any member | snapshot a new **immutable** version (active skills only) |
 | `POST /api/v1/skills/{id}/activate`              | owner only | activate (draft → v1 snapshot, or switch active version); idempotent |
 | `POST /api/v1/skills/{id}/disable`               | owner only | disable (terminal); idempotent |
+| `POST /api/v1/skills/{id}/versions/{vid}/tools/{tool}/approve` | owner only | explicitly grant one requested tool for that version; idempotent |
 | `GET /api/v1/skills/departments/{dept}/active-skills` | runtime | **active-only** department selection |
 | `GET /api/v1/skills/{id}/audit`                  | any member | audit trail for the skill |
 | `GET /healthz`                                   | —          | liveness probe |
@@ -138,7 +139,11 @@ curl -s localhost:8000/api/v1/skills/departments/finance/active-skills \
 Requested tools are validated against a closed catalogue
 (`calendar.read`, `email.send`, `crm.read`, ...) — destructive or unknown
 tools are rejected with explicit 422 errors, and requesting a tool never
-grants the permission by itself.
+grants the permission by itself. Granting is a separate, explicit,
+owner-only action: `POST .../versions/{vid}/tools/{tool}/approve` records a
+per-version approval (idempotent replays are audited as
+`tool.approval_replayed`), and only explicitly approved tools appear in the
+`approved_tools` field of the department runtime payload.
 
 ## Test output
 
@@ -153,7 +158,7 @@ configfile: pytest.ini
 testpaths: tests
 plugins: anyio-4.15.0, asyncio-1.4.0, env-1.1.5
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
-collecting ... collected 42 items
+collecting ... collected 49 items
 
 tests/test_config.py::test_no_hardcoded_database_credentials PASSED      [  2%]
 tests/test_config.py::test_resolved_url_requires_credentials PASSED      [  4%]
@@ -198,7 +203,7 @@ tests/test_skills.py::test_trailing_whitespace_and_duplicates_are_normalized PAS
 tests/test_skills.py::test_full_workflow_create_review_activate_retrieve_audit PASSED [ 97%]
 tests/test_skills.py::test_audit_trail_is_tenant_scoped PASSED           [100%]
 
-============================= 42 passed in 11.85s ==============================
+============================= 49 passed in 11.9s ==============================
 ```
 
 ## Known limitations

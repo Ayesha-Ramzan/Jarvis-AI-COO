@@ -247,12 +247,31 @@ class SkillDetailOut(SkillSummaryOut):
 
 
 class DepartmentSkillOut(BaseModel):
-    """Runtime payload: an active skill bound to its active version snapshot."""
+    """Runtime payload: an active skill bound to its active version snapshot.
+
+    ``approved_tools`` is the intersection of the version's requested tools
+    and the owner-granted approvals for that version: a requested-but-
+    unapproved tool never appears here, so it can never be invoked at
+    runtime.
+    """
 
     skill_id: str
     name: str
     department: str
     version: SkillVersionOut
+    approved_tools: list[str] = Field(default_factory=list)
+
+
+class ToolApprovalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    organization_id: str
+    skill_id: str
+    version_id: str
+    tool: str
+    approved_by: str
+    created_at: datetime
 
 
 class AuditLogOut(BaseModel):
