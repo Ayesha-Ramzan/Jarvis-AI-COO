@@ -119,7 +119,7 @@ CI is green on the final code commit, the previous HEAD, AND the current HEAD: r
 | Architecture decision note | Yes | 7 substantive ADRs |
 | Captured test output | Yes | README, both hermeticity modes + PG counts |
 | Known limitations, honest | Yes | Offset pagination, in-process limiter, PG-only trigger, token lifecycle |
-| Meaningful commit history | Yes | 34 incremental commits, fixes reference real findings |
+| Meaningful commit history | Yes | incremental commits across build, fixes and verification passes — no end-of-day squash |
 
 ## 6. Restrictions check
 
