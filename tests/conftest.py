@@ -71,6 +71,7 @@ else:
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool, StaticPool
 
@@ -116,10 +117,41 @@ def headers(org_id: str, user_id: str, role: str) -> dict[str, str]:
     }
 
 
+def _apply_immutability_trigger(sync_conn) -> None:
+    """Apply migration 0006's trigger to the freshly created test schema.
+
+    The test schema is built with ``metadata.create_all``, which does not
+    run Alembic migrations, so on PostgreSQL the immutability trigger from
+    migration 0006 must be applied here for the test database to match the
+    real migrated schema. Keep this DDL in sync with
+    ``alembic/versions/0006_version_rows_immutable.py``.
+    """
+    if sync_conn.dialect.name != "postgresql":
+        return
+    sync_conn.execute(
+        text("""
+        CREATE OR REPLACE FUNCTION forbid_skill_version_mutation() RETURNS trigger AS $$
+        BEGIN
+            RAISE EXCEPTION 'skill_versions rows are immutable: % is not permitted', TG_OP;
+        END;
+        $$ LANGUAGE plpgsql;
+        """)
+    )
+    sync_conn.execute(text("DROP TRIGGER IF EXISTS skill_versions_immutable ON skill_versions"))
+    sync_conn.execute(
+        text("""
+        CREATE TRIGGER skill_versions_immutable
+        BEFORE UPDATE OR DELETE ON skill_versions
+        FOR EACH ROW EXECUTE FUNCTION forbid_skill_version_mutation();
+        """)
+    )
+
+
 @pytest_asyncio.fixture
 async def db_session():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_apply_immutability_trigger)
     async with TestSessionLocal() as session:
         session.add_all(
             [

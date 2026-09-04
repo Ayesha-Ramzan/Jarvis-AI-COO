@@ -31,7 +31,7 @@ async def test_postgres_trigger_blocks_update_and_delete(db_session):
 
     async with engine.begin() as conn:
         await conn.execute(
-            text("INSERT INTO organizations (id, name) VALUES (:i, 't')"),
+            text("INSERT INTO organizations (id, name, created_at) VALUES (:i, 't', now())"),
             {"i": org_id},
         )
         await conn.execute(
