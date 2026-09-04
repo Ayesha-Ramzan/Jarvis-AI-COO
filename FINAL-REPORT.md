@@ -5,13 +5,18 @@ Start time: 2026-09-03, 11:00 PM (first commit 22:32)
 Finish time: 2026-09-04, 5:00 AM (build); hardening, CI-fix and final
 verification passes completed 2026-09-04
 Approximate hours: ~6 (build) + ~2 (verification and fix passes)
-Final commit before this report: `cc99041c2675e73040726a03b742d429e5b4cf01`
-(verifiable via `git cat-file -t cc99041c2675e73040726a03b742d429e5b4cf01`
-→ commit. This commit is verified green in CI — both the `sqlite` and
-`postgresql` jobs — at
-https://github.com/Ayesha-Ramzan/Jarvis-AI-COO/actions/runs/33852745432.
-The commit that records this report is documentation-only and is the
-repository's last commit; a commit cannot contain its own hash.)
+Final code commit (verified green in CI — `sqlite` + `postgresql` both
+`success` at run
+https://github.com/Ayesha-Ramzan/Jarvis-AI-COO/actions/runs/33852745432):
+`cc99041c2675e73040726a03b742d429e5b4cf01`, verifiable via
+`git cat-file -t cc99041c2675e73040726a03b742d429e5b4cf01`.
+The latest commit at the time this report was written is `165af3cbe930542d160d959e45dd6bc3c4897f83` (this pass's doc/audit update); it too is green
+(https://github.com/Ayesha-Ramzan/Jarvis-AI-COO/actions/runs/33853265794,
+both jobs `success`). The commit that records this report is
+documentation-only and is the repository's last commit; a commit cannot
+contain its own hash. The SHA recorded above as "final code commit" is the
+checkable, CI-verified value — exactly what `git rev-parse HEAD` returned
+immediately before this documentation commit landed.
 
 Goal achieved: Yes. The full workflow — authenticated organization → draft
 create → review → owner activation → active retrieval → exact-version audit
