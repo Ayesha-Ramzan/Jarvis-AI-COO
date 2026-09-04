@@ -1,13 +1,13 @@
 # PROGRESS.md
 
 Start time: 2026-09-03 (initial build); audit + fixes pass 2026-09-04
-Last updated: 2026-09-04T00:55+05:00
+Last updated: 2026-09-04T06:10+05:00 (late-fixes pass)
 
 ## Phase status
-- [x] Schema & domain model (organizations, memberships, skills, skill_versions, audit_log — migrations 0001-0004)
+- [x] Schema & domain model (organizations, memberships, skills, skill_versions, audit_log — migrations 0001-0005)
 - [x] Auth & tenant scoping (header identity + membership-resolved roles, ContextVar + global query filter)
 - [x] Core lifecycle routes (draft create/update, list, read+versions, immutable versions, owner-only activate/disable, department runtime selection)
-- [x] Tests (10 mandatory + boundary/sanitization/config suite: 49 tests, all green — run 2026-09-04)
+- [x] Tests (10 mandatory + boundary/sanitization/config suite: 52 tests, all green — run 2026-09-04)
 - [x] Docker Compose / .env.example / README (compose verified live from clean state on PostgreSQL 16)
 - [x] Architecture note / limitations / final report (7 ADRs, FINAL-REPORT.md, known limitations in README)
 
@@ -37,3 +37,21 @@ Last updated: 2026-09-04T00:55+05:00
 ## Open questions / risks
 - None blocking. Honest residual: header-based identity is still a stand-in for signed-token auth (documented in Known limitations).
 - On the shared dev machine, ports 8000/5432 belong to other projects; compose verification used remapped host ports. On a clean machine `cp .env.example .env && docker compose up --build` uses the standard ports.
+
+## Late-fixes pass (2026-09-04, live-API review round)
+- [x] Fix 1 (real bug): activating a NEW version of an already-active skill returned 409 —
+  the unconditional `can_transition(ACTIVE, ACTIVE)` gate made the documented
+  "switch active version" path unreachable. Fixed: the state-machine gate now governs
+  only genuine status transitions (draft→active; disabled→active blocked); switching
+  versions while active has its own explicit, audited path (`version_switch: true`,
+  `previous_version_id` recorded). Verified live: curl 200 + correct `active_version_id`;
+  disabled-skill reactivation still 409. New tests: switch success (v1 row untouched,
+  runtime serves v2, audit logged), cross-org switch denied, foreign-org version denied.
+- [x] Fix 2 (hermeticity): `Settings` no longer reads an ambient `.env` when
+  `ENVIRONMENT=test` (pytest.ini/conftest guarantee it). Verified: `pytest -v` 52/52 both
+  with `.env` present (README quick start leaves one) and without — outputs in README.
+- [x] Fix 3 (artifact accuracy): FINAL-REPORT.md records the real, existing final commit
+  SHA (previous value named a commit not present in history).
+- Suite now 52 tests, all green on SQLite test DB; PostgreSQL remains the reported
+  source of truth via the compose stack and its `test` service.
+
