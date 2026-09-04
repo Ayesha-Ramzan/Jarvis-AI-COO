@@ -2,13 +2,16 @@
 
 Repository URL: https://github.com/Ayesha-Ramzan/Jarvis-AI-COO
 Start time: 2026-09-03, 11:00 PM (first commit 22:32)
-Finish time: 2026-09-04, 5:00 AM
-Approximate hours: ~6 (single continuous session: build → audit → fixes → push)
-Final code commit SHA: `fea589763a43587e2eea14856f6085b6da00afe4`
-(verifiable via `git cat-file -t fea589763a43587e2eea14856f6085b6da00afe4`
-→ commit. Every commit after it is documentation-only; the repository's
-last commit is the report commit itself — a commit cannot contain its own
-hash.)
+Finish time: 2026-09-04, 5:00 AM (build); hardening, CI-fix and final
+verification passes completed 2026-09-04
+Approximate hours: ~6 (build) + ~2 (verification and fix passes)
+Final commit before this report: `cc99041c2675e73040726a03b742d429e5b4cf01`
+(verifiable via `git cat-file -t cc99041c2675e73040726a03b742d429e5b4cf01`
+→ commit. This commit is verified green in CI — both the `sqlite` and
+`postgresql` jobs — at
+https://github.com/Ayesha-Ramzan/Jarvis-AI-COO/actions/runs/33852745432.
+The commit that records this report is documentation-only and is the
+repository's last commit; a commit cannot contain its own hash.)
 
 Goal achieved: Yes. The full workflow — authenticated organization → draft
 create → review → owner activation → active retrieval → exact-version audit
@@ -42,10 +45,10 @@ Architecture decisions:
 - DB credentials required from the environment (no hardcoded defaults);
   compose database is internal-network only.
 
-Tests passed: 66/66 + 1 PostgreSQL-only trigger test. The suite runs in CI
-on both SQLite (the fast default) and PostgreSQL 16 (the reported source
-of truth; see `.github/workflows/tests.yml`). The suite is hermetic:
-`pytest -v` passes 66/66 both with an ambient `.env` present and without
+Tests passed: 66 passed + 1 PostgreSQL-only skip on SQLite; 67/67 on
+PostgreSQL, where the trigger test runs instead of skipping. Both CI jobs
+are green at the SHA above (run link in the header). The suite is hermetic:
+`pytest -v` passes identically with an ambient `.env` present and without
 (outputs captured in README).
 
 Late fixes (found by live-API review, fixed and verified 2026-09-04):
@@ -55,10 +58,19 @@ Late fixes (found by live-API review, fixed and verified 2026-09-04):
   `active_version_id` updated, prior version row untouched).
 - `Settings` ignored no ambient `.env` under tests; now env_file is
   disabled when ENVIRONMENT=test, making the suite hermetic.
+- The PostgreSQL-only trigger test failed in CI at every earlier commit:
+  its raw setup INSERT omitted the NOT NULL `created_at`, and the test
+  schema (built via `metadata.create_all`) never applied migration 0006's
+  trigger, so the UPDATE assertion never raised. Fixed in `e2588aa` by
+  supplying `created_at` and applying the trigger DDL in the test fixture;
+  both CI jobs green since.
 
 100/100 hardening pass (2026-09-04):
 - Bearer-token auth (HMAC-SHA256) — `POST /api/v1/auth/token` mints tokens
-  carrying identity only; the role stays server-resolved.
+  carrying identity only; the role stays server-resolved. `AUTH_SIGNING_KEY`
+  is now documented in `.env.example` (commented, with the 503 note) and
+  README, so issuance is reachable via the documented setup — verified live:
+  503 without the key, HTTP 200 with a minted token.
 - PostgreSQL trigger (migration 0006) rejects UPDATE/DELETE on
   `skill_versions`; the immutability guarantee is no longer app-only.
 - Pagination (`limit`/`offset` + `X-Total-Count`) on every list endpoint;
@@ -96,6 +108,7 @@ What I would implement next: external identity provider with token
 revocation and key rotation, cursor pagination and sorting, optimistic
 concurrency (ETags), Prometheus metrics, outbox-based audit streaming.
 
-AI tools used, if any: Kimi Code CLI (assistant pair-programming; an
-earlier LLM-assisted audit pass produced AUDIT-REPORT.md findings F-1..F-6,
-all fixed and re-verified).
+AI tools used, if any: Kimi Code CLI (assistant pair-programming and audit
+passes; earlier passes produced AUDIT-REPORT.md findings F-1..F-9, all
+fixed and re-verified with live evidence — including the final pass that
+confirmed CI green on the commit named above).
