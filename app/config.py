@@ -6,14 +6,26 @@ All configuration is sourced from environment variables (with an optional
 
 from __future__ import annotations
 
+import os
+
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Hermetic tests: when the process runs with ENVIRONMENT=test (pytest.ini and
+# tests/conftest.py both guarantee this before app modules import), Settings
+# must not read an ambient .env file. Otherwise a developer who follows the
+# README's "cp .env.example .env" quick start leaves real values (e.g.
+# POSTGRES_USER=jarvis) in the working directory, and credential-isolation
+# tests would fail depending on whatever happens to sit in the repo root -
+# the suite would not be hermetic. In every non-test environment the .env
+# file is honored exactly as documented.
+_ENV_FILE = None if os.environ.get("ENVIRONMENT", "").lower() == "test" else ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
