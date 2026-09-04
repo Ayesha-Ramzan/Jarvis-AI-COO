@@ -1,10 +1,10 @@
 # FINAL REPORT
 
-Repository URL: (local repository — push target to be assigned by the candidate)
-Start time: 2026-09-03
-Finish time: 2026-09-04
-Approximate hours: ~8 total across two sessions (build, then evidence-based audit + six finding fixes)
-Final commit SHA: `863e3b6` at submission; docs refreshed in the final commit (see `git log -1 --oneline`)
+Repository URL: https://github.com/Ayesha-Ramzan/Jarvis-AI-COO
+Start time: 2026-09-03, 11:00 PM (first commit 22:32)
+Finish time: 2026-09-04, 5:00 AM
+Approximate hours: ~6 (single continuous session: build → audit → fixes → push)
+Final commit SHA: `34467f3ea8f4a9787f202c682b05f49d43c9abe6`
 
 Goal achieved: Yes. The full workflow — authenticated organization → draft
 create → review → owner activation → active retrieval → exact-version audit
@@ -39,8 +39,11 @@ Architecture decisions:
   compose database is internal-network only.
 
 Tests passed: 49/49 (10 mandatory spec tests + boundary, isolation,
-immutability, idempotency, sanitization, lifecycle-state-machine and config
-tests). Verified by live run 2026-09-04 (49 passed); output captured in README.
+immutability, idempotency, tool-approval, sanitization, lifecycle-state-machine
+and config tests). Verified by live run 2026-09-04 on SQLite (dedicated test
+database) **and** against PostgreSQL via the Docker Compose stack and its
+`test` service — PostgreSQL is the reported source of truth (commit
+`7142419`, "run full test suite against PostgreSQL"). Output captured in README.
 
 Security/isolation evidence:
 - Live probes: cross-org read/update/activate → 404; member activation →
@@ -48,6 +51,9 @@ Security/isolation evidence:
   active-skill PATCH → 409; destructive tool → 422 — on both the SQLite
   dev server and the clean PostgreSQL Docker Compose stack.
 - Full git-history secret scan clean; `.env.example` placeholders only.
+- Tool permissions are strictly opt-in: requested tools grant nothing at
+  runtime until an owner explicitly approves them per immutable version;
+  re-approval is an idempotent no-op audited as `tool.approval_replayed`.
 - Compose verified starting from a clean state (fresh volume → migrations
   → fixture seeding → healthy API).
 
@@ -56,8 +62,10 @@ Known limitations:
   authorization itself is fully server-side via memberships.
 - No pagination, no rate limiting (edge concern), strict sanitizers reject
   SQL comment sequences in free text (documented trade-off).
-- Tests run on SQLite by design; PostgreSQL is exercised via Alembic and
-  the compose stack (rationale in ADR-5).
+- Tests run on SQLite by design; PostgreSQL is exercised via Alembic, the
+  compose stack and the compose `test` service (rationale in ADR-5).
+- No database-level trigger preventing in-place UPDATE of active version
+  rows; immutability is enforced at the application layer and audited.
 
 What I would implement next: signed-token authentication, pagination,
 optimistic concurrency (ETags), Prometheus metrics, outbox-based audit
