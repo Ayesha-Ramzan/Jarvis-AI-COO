@@ -510,16 +510,25 @@ async def activate_skill(
         await db.refresh(skill)
         return _skill_to_detail(skill)
 
-    # Explicit state machine gate (see app.lifecycle): from the terminal
-    # 'disabled' state no transition to active exists.
-    if not can_transition(skill.status, SkillStatus.ACTIVE):
+    # Terminal-state guard: a disabled skill can never become active again.
+    # (This is a state-machine fact, not a version-switch concern - see below.)
+    if skill.status == SkillStatus.DISABLED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A disabled skill cannot be reactivated.",
         )
 
     version: SkillVersion
+    audit_detail: dict[str, Any]
     if skill.status == SkillStatus.DRAFT:
+        # Genuine status transition draft -> active; consult the state machine.
+        if not can_transition(skill.status, SkillStatus.ACTIVE):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Cannot activate a skill in {skill.status.value!r} state."
+                ),
+            )
         if payload.version_id is not None:
             version = await _get_version_or_404(db, payload.version_id, skill_id=skill.id)
         else:
@@ -558,10 +567,24 @@ async def activate_skill(
                 version_hash=version.version_hash,
                 detail={"version_number": 1, "source": "draft_activation"},
             )
-    else:  # active, switching to a different version
+        audit_detail = {
+            "version_number": version.version_number,
+            "previous_status": SkillStatus.DRAFT.value,
+        }
+    else:
+        # ACTIVE skill switching to a different version: this is NOT a
+        # status transition (the skill stays active), so it deliberately
+        # does not route through can_transition. The only guards are the
+        # terminal-state check above and version ownership below; the
+        # previously active version row is never modified (immutability).
         version = await _get_version_or_404(db, payload.version_id, skill_id=skill.id)
+        audit_detail = {
+            "version_number": version.version_number,
+            "previous_status": SkillStatus.ACTIVE.value,
+            "version_switch": True,
+            "previous_version_id": skill.active_version_id,
+        }
 
-    previous_status = skill.status
     skill.status = SkillStatus.ACTIVE
     skill.active_version_id = version.id
     await record_audit(
@@ -571,10 +594,7 @@ async def activate_skill(
         skill_id=skill.id,
         version_id=version.id,
         version_hash=version.version_hash,
-        detail={
-            "version_number": version.version_number,
-            "previous_status": previous_status,
-        },
+        detail=audit_detail,
     )
     await db.commit()
     await db.refresh(skill)

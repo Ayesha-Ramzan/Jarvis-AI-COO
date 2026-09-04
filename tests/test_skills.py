@@ -493,6 +493,116 @@ async def test_trailing_whitespace_and_duplicates_are_normalized(client, abc_own
 
 
 # ---------------------------------------------------------------------------
+# Version switching on an already-active skill
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_active_skill_can_switch_to_new_version(client, abc_owner):
+    """The documented 'switch active version' capability: activate v1, create
+    v2, then activate v2 specifically while the skill stays active."""
+    skill = await create_draft(client, abc_owner)
+    v1_activation = await activate(client, abc_owner, skill["id"])
+    v1_id = v1_activation.json()["active_version_id"]
+    v1_hash = next(
+        v["version_hash"] for v in v1_activation.json()["versions"] if v["id"] == v1_id
+    )
+
+    created_v2 = await client.post(
+        f"{SKILLS}/{skill['id']}/versions",
+        json=sample_skill_payload(
+            name="Invoice Chaser v2",
+            content="You are an AR assistant with an escalated tone.",
+        ),
+        headers=abc_owner,
+    )
+    assert created_v2.status_code == 201, created_v2.text
+    v2_id = created_v2.json()["id"]
+    v2_hash = created_v2.json()["version_hash"]
+
+    switched = await client.post(
+        f"{SKILLS}/{skill['id']}/activate",
+        json={"version_id": v2_id},
+        headers=abc_owner,
+    )
+    assert switched.status_code == 200, switched.text
+    body = switched.json()
+    assert body["status"] == "active"
+    assert body["active_version_id"] == v2_id
+
+    # v1's immutable row is untouched and both versions remain listed.
+    versions = {v["id"]: v for v in body["versions"]}
+    assert versions[v1_id]["version_hash"] == v1_hash
+    assert versions[v1_id]["name"] == "Invoice Chaser"
+    assert versions[v2_id]["version_hash"] == v2_hash
+
+    # Runtime now serves v2's definition; the switch is audit-logged.
+    runtime = await client.get(
+        f"{SKILLS}/departments/finance/active-skills", headers=abc_owner
+    )
+    entry = next(e for e in runtime.json() if e["skill_id"] == skill["id"])
+    assert entry["version"]["id"] == v2_id
+
+    audit = await client.get(f"{SKILLS}/{skill['id']}/audit", headers=abc_owner)
+    switch_event = next(
+        e
+        for e in audit.json()
+        if e["event"] == "skill.activated" and e["version_id"] == v2_id
+    )
+    assert switch_event["detail"]["version_switch"] is True
+    assert switch_event["detail"]["previous_version_id"] == v1_id
+
+
+@pytest.mark.asyncio
+async def test_cross_org_version_switch_is_denied(client, abc_owner, xyz_owner):
+    """XYZ can never switch an ABC skill's active version - the version is
+    invisible cross-tenant, so the attempt is a 404 with no state change."""
+    skill = await create_draft(client, abc_owner)
+    await activate(client, abc_owner, skill["id"])
+    v2 = await client.post(
+        f"{SKILLS}/{skill['id']}/versions",
+        json=sample_skill_payload(name="ABC v2"),
+        headers=abc_owner,
+    )
+    assert v2.status_code == 201
+
+    denied = await client.post(
+        f"{SKILLS}/{skill['id']}/activate",
+        json={"version_id": v2.json()["id"]},
+        headers=xyz_owner,
+    )
+    assert denied.status_code in (403, 404)
+
+    fetched = await client.get(f"{SKILLS}/{skill['id']}", headers=abc_owner)
+    assert fetched.json()["active_version_id"] != v2.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_activation_of_foreign_org_version_is_denied(
+    client, abc_owner, xyz_owner
+):
+    """A version belonging to another org's skill cannot be activated even by
+    an org owner: _get_version_or_404 checks skill_id ownership."""
+    other = await create_draft(client, xyz_owner)
+    await activate(client, xyz_owner, other["id"])
+    xyz_v2 = await client.post(
+        f"{SKILLS}/{other['id']}/versions",
+        json=sample_skill_payload(name="XYZ v2"),
+        headers=xyz_owner,
+    )
+    assert xyz_v2.status_code == 201
+
+    skill = await create_draft(client, abc_owner)
+    await activate(client, abc_owner, skill["id"])
+    hijack = await client.post(
+        f"{SKILLS}/{skill['id']}/activate",
+        json={"version_id": xyz_v2.json()["id"]},
+        headers=abc_owner,
+    )
+    assert hijack.status_code in (403, 404)
+
+
+# ---------------------------------------------------------------------------
 # End-to-end workflow + audit completeness
 # ---------------------------------------------------------------------------
 
